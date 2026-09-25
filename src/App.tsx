@@ -17,6 +17,7 @@ import { MyAdjustments } from './routes/MyAdjustments';
 import { FinanceSubmission } from './routes/FinanceSubmission';
 import { Home } from './routes/Home';
 import { Login } from './routes/Login';
+import { ChangePassword } from './routes/ChangePassword';
 import { MySubmissions } from './routes/MySubmissions';
 import { NewPeriod } from './routes/NewPeriod';
 import { Notifications } from './routes/Notifications';
@@ -28,6 +29,14 @@ export default function App() {
     <AuthProvider>
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route
+          path="/promeni-lozinku"
+          element={
+            <RequireAuth>
+              <ChangePassword />
+            </RequireAuth>
+          }
+        />
         <Route
           element={
             <RequireAuth>

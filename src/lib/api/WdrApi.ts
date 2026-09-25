@@ -61,6 +61,8 @@ export interface WdrApi {
   // --- session -------------------------------------------------------------
   signIn(email: string, password: string): Promise<void>;
   signOut(): Promise<void>;
+
+  updatePassword(password: string): Promise<void>;
   /** Resolves the current session, or null when nobody is signed in. */
   getSession(): Promise<SessionProfile | null>;
   onAuthChange(cb: () => void): () => void;

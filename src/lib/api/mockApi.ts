@@ -210,6 +210,12 @@ export class MockWdrApi implements WdrApi {
     this.notify();
   }
 
+  async updatePassword(password: string): Promise<void> {
+    if (password.length < 6) {
+      throw new WdrApiError('Šifra mora imati najmanje 6 znakova.', 'weak_password');
+    }
+  }
+
   onAuthChange(cb: () => void): () => void {
     this.listeners.add(cb);
     return () => this.listeners.delete(cb);

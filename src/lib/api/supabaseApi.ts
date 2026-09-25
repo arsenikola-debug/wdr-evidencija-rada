@@ -100,6 +100,11 @@ export class SupabaseWdrApi implements WdrApi {
     await this.rest.auth.signOut();
   }
 
+  async updatePassword(password: string): Promise<void> {
+    const { error } = await this.rest.auth.updateUser({ password });
+    if (error) throw new WdrApiError(error.message, error.code ?? null, error);
+  }
+
   onAuthChange(cb: () => void): () => void {
     const { data } = this.rest.auth.onAuthStateChange(() => {
       setTimeout(cb, 0);
