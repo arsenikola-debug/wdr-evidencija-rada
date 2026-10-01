@@ -18,7 +18,8 @@ export type SkipReason =
   | 'NO_SOURCE'
   | 'NO_SHIFT'
   | 'ALREADY_EMPTY'
-  | 'NOT_IN_PERIOD';
+  | 'NOT_IN_PERIOD'
+  | 'LOCKED_DAY';
 
 function isForeign(index: CellIndex, key: string): boolean {
   const cell = index.get(key);
@@ -40,6 +41,8 @@ export function applyStatus(args: {
   employees: GridEmployee[];
   shiftTemplateId?: Uuid | null;
   statusAllowsSegments: (code: AttendanceStatusCode) => boolean;
+  /** Dan van radnog odnosa / raspodele (eligibility, 0059). */
+  isLocked?: (key: string) => boolean;
 }): BulkPlan {
   const { keys, status, index, employees, shiftTemplateId } = args;
   const byId = new Map(employees.map((e) => [e.employee_id, e]));
@@ -47,6 +50,10 @@ export function applyStatus(args: {
   const skipped: BulkPlan['skipped'] = [];
 
   for (const key of keys) {
+    if (args.isLocked?.(key)) {
+      skipped.push({ key, reason: 'LOCKED_DAY' });
+      continue;
+    }
     if (isForeign(index, key)) {
       skipped.push({ key, reason: 'FOREIGN_CELL' });
       continue;
@@ -107,12 +114,17 @@ export function copyFromOffset(args: {
   offsetDays: number;
   periodStart: string;
   periodEnd: string;
+  isLocked?: (key: string) => boolean;
 }): BulkPlan {
   const { keys, index, offsetDays, periodStart, periodEnd } = args;
   const entries: BulkEntryInput[] = [];
   const skipped: BulkPlan['skipped'] = [];
 
   for (const key of keys) {
+    if (args.isLocked?.(key)) {
+      skipped.push({ key, reason: 'LOCKED_DAY' });
+      continue;
+    }
     if (isForeign(index, key)) {
       skipped.push({ key, reason: 'FOREIGN_CELL' });
       continue;
@@ -189,7 +201,95 @@ export const SKIP_REASON_TEXT: Record<SkipReason, string> = {
   NO_SHIFT: 'nema šablon smene',
   ALREADY_EMPTY: 'ćelija je već prazna',
   NOT_IN_PERIOD: 'izvorni dan je van perioda prijave',
+  LOCKED_DAY: 'dan je zaključan (van radnog odnosa ili raspodele u ovaj centar)',
 };
+
+// ---------------------------------------------------------------------------
+// „Nije radio ceo period" (redizajn §5)
+// ---------------------------------------------------------------------------
+
+export type WholePeriodState = 'ALL' | 'PARTIAL' | 'NONE' | 'UNAVAILABLE';
+
+function ownAvailableKeys(args: {
+  employeeId: Uuid;
+  dates: string[];
+  index: CellIndex;
+  isLocked?: (key: string) => boolean;
+}): string[] {
+  return args.dates
+    .map((d) => cellKey(args.employeeId, d))
+    .filter((k) => !args.isLocked?.(k) && !isForeign(args.index, k));
+}
+
+/**
+ * Stanje opcije za jednog zaposlenog: ALL kada su SVI dostupni dani „Ne radi",
+ * UNAVAILABLE kada zaposleni nema nijedan dostupan dan u ovoj prijavi.
+ */
+export function wholePeriodNotWorkingState(args: {
+  employeeId: Uuid;
+  dates: string[];
+  index: CellIndex;
+  isLocked?: (key: string) => boolean;
+}): WholePeriodState {
+  const keys = ownAvailableKeys(args);
+  if (keys.length === 0) return 'UNAVAILABLE';
+  const nw = keys.filter((k) => args.index.get(k)?.attendance_status === 'NOT_WORKING').length;
+  if (nw === keys.length) return 'ALL';
+  return nw === 0 ? 'NONE' : 'PARTIAL';
+}
+
+/**
+ * Označava SVE dostupne dane zaposlenog kao NOT_WORKING. Zaključani dani i dani
+ * drugog centra se ne diraju. `overwrites` je broj dana koji već imaju drugi
+ * status — UI traži potvrdu pre nego što ih prepiše.
+ */
+export function planWholePeriodNotWorking(args: {
+  employeeId: Uuid;
+  dates: string[];
+  index: CellIndex;
+  isLocked?: (key: string) => boolean;
+}): BulkPlan & { overwrites: number } {
+  const entries: BulkEntryInput[] = [];
+  const skipped: BulkPlan['skipped'] = [];
+  let overwrites = 0;
+
+  for (const d of args.dates) {
+    const key = cellKey(args.employeeId, d);
+    if (args.isLocked?.(key)) {
+      skipped.push({ key, reason: 'LOCKED_DAY' });
+      continue;
+    }
+    if (isForeign(args.index, key)) {
+      skipped.push({ key, reason: 'FOREIGN_CELL' });
+      continue;
+    }
+    const cur = args.index.get(key);
+    if (cur?.attendance_status === 'NOT_WORKING') continue;
+    if (cur) overwrites += 1;
+    entries.push({ employee_id: args.employeeId, work_date: d, attendance_status: 'NOT_WORKING' });
+  }
+  return { entries, skipped, overwrites };
+}
+
+/**
+ * Poništavanje: uklanja SAMO dane ovog zaposlenog koji su „Ne radi" u ovoj
+ * prijavi, pa operater može ručno da unese stvarne podatke. Drugi statusi ostaju.
+ */
+export function planUndoWholePeriodNotWorking(args: {
+  employeeId: Uuid;
+  dates: string[];
+  index: CellIndex;
+}): BulkPlan {
+  const entries: BulkEntryInput[] = [];
+  for (const d of args.dates) {
+    const key = cellKey(args.employeeId, d);
+    const cur = args.index.get(key);
+    if (cur && cur.owned_by_this_submission && cur.attendance_status === 'NOT_WORKING') {
+      entries.push({ employee_id: args.employeeId, work_date: d, delete: true });
+    }
+  }
+  return { entries, skipped: [] };
+}
 
 export function describeSkips(plan: BulkPlan): string | null {
   if (plan.skipped.length === 0) return null;

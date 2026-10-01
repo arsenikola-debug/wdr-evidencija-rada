@@ -70,6 +70,8 @@ export function computeCompletion(args: {
   employees: GridEmployee[];
   index: CellIndex;
   mode: ExpectedDaysMode;
+  /** Zaključan dan (van radnog odnosa/raspodele) nije očekivan za tog zaposlenog. */
+  isLocked?: (key: string) => boolean;
 }): CompletionSummary {
   const { dates, employees, index, mode } = args;
   const expectedDates = dates.filter((d) => isExpectedDate(d, mode));
@@ -82,18 +84,21 @@ export function computeCompletion(args: {
   for (const e of employees) {
     const missing: IsoDate[] = [];
     let empReviewed = 0;
+    let empExpected = 0;
     for (const d of expectedDates) {
+      if (args.isLocked?.(cellKey(e.employee_id, d))) continue;
+      empExpected += 1;
       if (isReviewed(index, e.employee_id, d)) empReviewed += 1;
       else {
         missing.push(d);
         missingKeys.push(cellKey(e.employee_id, d));
       }
     }
-    expected += expectedDates.length;
+    expected += empExpected;
     reviewed += empReviewed;
     byEmployee.push({
       employeeId: e.employee_id,
-      expected: expectedDates.length,
+      expected: empExpected,
       reviewed: empReviewed,
       missingDates: missing,
     });

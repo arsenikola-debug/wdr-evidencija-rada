@@ -1,0 +1,178 @@
+import type { CalcLine, PreviewLine } from '../../lib/api/types';
+
+/**
+ * Zbir PO ZAPOSLENOM za ceo period, grupisan po vrsti naknade (redizajn §7, §21).
+ *
+ * Isto pravilo kao `previewBreakdown.ts`: ovo je PRIKAZ serverski izračunatih
+ * linija — ništa se ne cenovniči, ne zaokružuje niti izvodi iz stope i količine.
+ * Linija bez iznosa (pravilo nedostaje) se NE računa kao nula: broji se u
+ * `blockedLines`, a iznos reda/grupe se tada prikazuje kao nepotpun.
+ *
+ * Prevoz je posebna grupa i NE ulazi u „ukupno naknade zaposlenom" (plaća se
+ * prevozniku); prikazuje se odvojeno.
+ */
+
+export interface SummaryLine {
+  employee_id: string;
+  employee_name: string;
+  employee_code?: string | null;
+  line_kind: string;
+  payment_type_code: string | null;
+  units: number;
+  amount: number | null;
+}
+
+export interface EmployeeSummaryRow {
+  employeeId: string;
+  employeeName: string;
+  employeeCode: string | null;
+  units: number;
+  amount: number;
+  blockedLines: number;
+}
+
+export interface EmployeeSummaryGroup {
+  key: string;
+  label: string;
+  lineKind: string;
+  rows: EmployeeSummaryRow[];
+  units: number;
+  amount: number;
+  blockedLines: number;
+}
+
+export const PAYMENT_LABEL: Record<string, string> = {
+  KARNET: 'Karnet',
+  OBUKA: 'Obuka',
+  DNEVNICA: 'Dnevnica',
+  DODATNA_DNEVNICA: 'Dodatna dnevnica',
+  ISPOMOC: 'Ispomoć',
+  RADNA_SUBOTA: 'Radna subota',
+  PREKOVREMENI: 'Prekovremeni rad',
+  NOCNI_RAD: 'Noćni rad',
+  STOPOVI: 'Stopovi',
+  KOREKCIJA: 'Korekcija',
+  PREVOZ: 'Prevoz',
+};
+
+const ORDER = [
+  'KARNET', 'OBUKA', 'DNEVNICA', 'DODATNA_DNEVNICA', 'ISPOMOC', 'RADNA_SUBOTA',
+  'PREKOVREMENI', 'NOCNI_RAD', 'STOPOVI', 'KOREKCIJA',
+];
+
+export function groupKeyOf(line: Pick<SummaryLine, 'line_kind' | 'payment_type_code'>): string {
+  if (line.line_kind === 'TRANSPORT') return 'PREVOZ';
+  return line.payment_type_code ?? '—';
+}
+
+export function fromPreviewLines(lines: PreviewLine[]): SummaryLine[] {
+  return lines.map((l) => ({
+    employee_id: l.employee_id,
+    employee_name: l.employee_name,
+    employee_code: null,
+    line_kind: l.line_kind,
+    payment_type_code: l.payment_type_code,
+    units: l.units,
+    amount: l.status === 'RESOLVED' ? l.calculated_amount : null,
+  }));
+}
+
+export function fromCalcLines(lines: CalcLine[]): SummaryLine[] {
+  return lines.map((l) => ({
+    employee_id: l.employee_id,
+    employee_name: l.employee_name,
+    employee_code: l.employee_code,
+    line_kind: l.line_kind,
+    payment_type_code: l.payment_type_code,
+    units: l.units,
+    amount: l.status === 'RESOLVED' ? l.amount : null,
+  }));
+}
+
+function rank(key: string): number {
+  if (key === 'PREVOZ') return 1000;
+  const i = ORDER.indexOf(key);
+  return i === -1 ? 500 : i;
+}
+
+export function summarizeByEmployee(lines: SummaryLine[]): EmployeeSummaryGroup[] {
+  const groups = new Map<string, EmployeeSummaryGroup>();
+  const rows = new Map<string, EmployeeSummaryRow>();
+
+  for (const l of lines) {
+    const key = groupKeyOf(l);
+    const g =
+      groups.get(key) ??
+      {
+        key,
+        label: PAYMENT_LABEL[key] ?? key,
+        lineKind: l.line_kind,
+        rows: [],
+        units: 0,
+        amount: 0,
+        blockedLines: 0,
+      };
+    groups.set(key, g);
+
+    const rk = `${key}|${l.employee_id}`;
+    let r = rows.get(rk);
+    if (!r) {
+      r = {
+        employeeId: l.employee_id,
+        employeeName: l.employee_name,
+        employeeCode: l.employee_code ?? null,
+        units: 0,
+        amount: 0,
+        blockedLines: 0,
+      };
+      rows.set(rk, r);
+      g.rows.push(r);
+    }
+
+    if (l.amount == null) {
+      r.blockedLines += 1;
+      g.blockedLines += 1;
+    } else {
+      r.amount += l.amount;
+      r.units += l.units;
+      g.amount += l.amount;
+      g.units += l.units;
+    }
+  }
+
+  for (const g of groups.values()) {
+    g.rows.sort((a, b) => a.employeeName.localeCompare(b.employeeName, 'sr'));
+    g.amount = round2(g.amount);
+    for (const r of g.rows) r.amount = round2(r.amount);
+  }
+
+  return [...groups.values()].sort((a, b) => rank(a.key) - rank(b.key) || a.key.localeCompare(b.key));
+}
+
+export interface EmployeeTotal {
+  employeeId: string;
+  /** Zbir naknada zaposlenom (bez prevoza), samo iz obračunatih linija. */
+  amount: number;
+  transportAmount: number;
+  /** > 0 znači da iznos nije konačan — neka linija nema pravilo. */
+  blockedLines: number;
+}
+
+export function employeeTotals(lines: SummaryLine[]): Map<string, EmployeeTotal> {
+  const out = new Map<string, EmployeeTotal>();
+  for (const l of lines) {
+    const t =
+      out.get(l.employee_id) ??
+      { employeeId: l.employee_id, amount: 0, transportAmount: 0, blockedLines: 0 };
+    if (l.amount == null) t.blockedLines += 1;
+    else if (l.line_kind === 'TRANSPORT') t.transportAmount = round2(t.transportAmount + l.amount);
+    else t.amount = round2(t.amount + l.amount);
+    out.set(l.employee_id, t);
+  }
+  return out;
+}
+
+/** Zbir već zaokruženih serverskih iznosa; samo uklanja binarni šum sabiranja. */
+function round2(n: number): number {
+  return Math.round(n * 100) / 100;
+}

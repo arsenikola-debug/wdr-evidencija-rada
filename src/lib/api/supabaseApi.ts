@@ -4,6 +4,19 @@ import { effectivePermissions, roleCodes } from '../../features/auth/permissions
 import { WdrApiError, type WdrApi } from './WdrApi';
 import type {
   AdminAttendanceStatus,
+  AdminPayoutReport,
+  CorrectionBatchDetail,
+  CorrectionBatchHeader,
+  CutoverReadiness,
+  NightWorkDeclaration,
+  PayoutContext,
+  PayoutDuplicateMatch,
+  PayoutEmployeeSearchResult,
+  PayoutDetail,
+  PayoutListItem,
+  PayoutRequestType,
+  PayoutStatus,
+  EntryEligibility,
   AdminReadiness,
   VerificationKind,
   ControlFindingDetail,
@@ -335,6 +348,12 @@ export class SupabaseWdrApi implements WdrApi {
     return this.rpc<GridPayload>('rpc_get_grid', { p_submission_id: submissionId });
   }
 
+  async getEntryEligibility(submissionId: Uuid): Promise<EntryEligibility> {
+    return this.rpc<EntryEligibility>('rpc_get_entry_eligibility', {
+      p_submission_id: submissionId,
+    });
+  }
+
   async bulkUpsert(
     submissionId: Uuid,
     entries: BulkEntryInput[],
@@ -590,7 +609,7 @@ export class SupabaseWdrApi implements WdrApi {
     centerIds?: Uuid[],
     from?: string | null,
     to?: string | null,
-    types?: Array<'PERIOD' | 'ADJUSTMENT' | 'COURIER_STOPS' | 'COURIER_STOP_ADJUSTMENT'> | null,
+    types?: Array<'PERIOD' | 'ADJUSTMENT' | 'COURIER_STOPS' | 'COURIER_STOP_ADJUSTMENT' | 'PAYOUT' | 'PAYOUT_CORRECTION'> | null,
   ): Promise<FinanceHistory> {
     return this.rpc<FinanceHistory>('rpc_get_finance_history', {
       p_center_ids: centerIds && centerIds.length > 0 ? centerIds : null,
@@ -1010,6 +1029,148 @@ export class SupabaseWdrApi implements WdrApi {
     return this.rpc<BaEmployees>('rpc_ba_employees', {
       ...this.baArgs(from, to, centerIds),
       p_search: search ?? null, p_sort: sort, p_limit: limit, p_offset: offset,
+    });
+  }
+
+  async adminPayoutReport(
+    from: IsoDate, to: IsoDate, centerIds?: Uuid[] | null,
+  ): Promise<AdminPayoutReport> {
+    return this.rpc<AdminPayoutReport>('rpc_admin_payout_report', this.baArgs(from, to, centerIds));
+  }
+
+  // --- dodatne isplate -------------------------------------------------------
+  async payoutContext(): Promise<PayoutContext> {
+    return this.rpc<PayoutContext>('rpc_payout_context', {});
+  }
+  async payoutList(filter?: {
+    centerId?: Uuid | null; requestType?: PayoutRequestType | null; statuses?: PayoutStatus[] | null;
+  }): Promise<PayoutListItem[]> {
+    return this.rpc<PayoutListItem[]>('rpc_payout_list', {
+      p_center_id: filter?.centerId ?? null,
+      p_request_type: filter?.requestType ?? null,
+      p_statuses: filter?.statuses ?? null,
+    });
+  }
+  async payoutGet(requestId: Uuid): Promise<PayoutDetail> {
+    return this.rpc<PayoutDetail>('rpc_payout_get', { p_request_id: requestId });
+  }
+  async payoutOpen(
+    requestType: PayoutRequestType, centerId: Uuid, from: IsoDate, to: IsoDate,
+  ): Promise<PayoutDetail> {
+    return this.rpc<PayoutDetail>('rpc_payout_open', {
+      p_request_type: requestType, p_center_id: centerId, p_period_start: from, p_period_end: to,
+    });
+  }
+  async payoutOpenCorrection(originalRequestId: Uuid, reason: string): Promise<PayoutDetail> {
+    return this.rpc<PayoutDetail>('rpc_payout_open_correction', {
+      p_original_request_id: originalRequestId, p_reason: reason,
+    });
+  }
+  async payoutSetEmployees(requestId: Uuid, add?: Uuid[] | null, remove?: Uuid[] | null): Promise<PayoutDetail> {
+    return this.rpc<PayoutDetail>('rpc_payout_set_employees', {
+      p_request_id: requestId, p_add: add ?? null, p_remove: remove ?? null,
+    });
+  }
+  async payoutSetLine(input: {
+    request_id: Uuid; employee_id: Uuid; work_date: IsoDate;
+    units?: number | null; time_from?: string | null; time_to?: string | null; note?: string | null;
+  }): Promise<PayoutDetail> {
+    return this.rpc<PayoutDetail>('rpc_payout_set_line', {
+      p_request_id: input.request_id, p_employee_id: input.employee_id, p_work_date: input.work_date,
+      p_units: input.units ?? null, p_time_from: input.time_from ?? null,
+      p_time_to: input.time_to ?? null, p_note: input.note ?? null,
+    });
+  }
+  async payoutCopyPrevious(requestId: Uuid): Promise<PayoutDetail> {
+    return this.rpc<PayoutDetail>('rpc_payout_copy_previous', { p_request_id: requestId });
+  }
+  async payoutSubmit(requestId: Uuid): Promise<PayoutDetail> {
+    return this.rpc<PayoutDetail>('rpc_payout_submit', { p_request_id: requestId });
+  }
+  async payoutFinanceQueue(statuses?: PayoutStatus[] | null): Promise<PayoutListItem[]> {
+    return this.rpc<PayoutListItem[]>('rpc_payout_finance_queue', { p_statuses: statuses ?? null });
+  }
+  async payoutFinanceApprove(requestId: Uuid, comment?: string | null): Promise<PayoutDetail> {
+    return this.rpc<PayoutDetail>('rpc_payout_finance_approve', {
+      p_request_id: requestId, p_comment: comment ?? null,
+    });
+  }
+  async payoutFinanceReturn(requestId: Uuid, comment: string): Promise<PayoutDetail> {
+    return this.rpc<PayoutDetail>('rpc_payout_finance_return', { p_request_id: requestId, p_comment: comment });
+  }
+  async setNightWorkDeclaration(input: {
+    employee_id: Uuid; center_id: Uuid; declared: boolean; from: IsoDate; notes?: string | null;
+  }): Promise<unknown> {
+    return this.rpc<unknown>('rpc_set_night_work_declaration', {
+      p_employee_id: input.employee_id, p_center_id: input.center_id,
+      p_declared: input.declared, p_from: input.from, p_notes: input.notes ?? null,
+    });
+  }
+  async nightWorkDeclarations(centerId: Uuid, on?: IsoDate | null): Promise<NightWorkDeclaration[]> {
+    return this.rpc<NightWorkDeclaration[]>('rpc_night_work_declarations', {
+      p_center_id: centerId, p_on: on ?? null,
+    });
+  }
+  async payoutEmployeeSearch(query: string, opts?: {
+    from?: IsoDate | null; to?: IsoDate | null; limit?: number; offset?: number;
+  }): Promise<PayoutEmployeeSearchResult> {
+    return this.rpc<PayoutEmployeeSearchResult>('rpc_payout_employee_search', {
+      p_query: query, p_from: opts?.from ?? null, p_to: opts?.to ?? null,
+      p_limit: opts?.limit ?? 20, p_offset: opts?.offset ?? 0,
+    });
+  }
+  async payoutEmployeeDuplicateCheck(
+    firstName: string, lastName: string, employeeCode?: string | null,
+  ): Promise<{ matches: PayoutDuplicateMatch[]; note: string }> {
+    return this.rpc<{ matches: PayoutDuplicateMatch[]; note: string }>('rpc_payout_employee_duplicate_check', {
+      p_first_name: firstName, p_last_name: lastName, p_employee_code: employeeCode ?? null,
+    });
+  }
+  async adminPayoutCutoverReadiness(date: IsoDate): Promise<CutoverReadiness> {
+    return this.rpc<CutoverReadiness>('rpc_admin_payout_cutover_readiness', { p_date: date });
+  }
+  async adminActivatePayoutCutover(date: IsoDate, confirmation: string): Promise<CutoverReadiness> {
+    return this.rpc<CutoverReadiness>('rpc_admin_activate_payout_cutover', {
+      p_date: date, p_confirmation: confirmation,
+    });
+  }
+
+  // --- K8 korekcije ------------------------------------------------------------
+  async correctionBatchOpen(originalSubmissionId: Uuid, reason: string): Promise<CorrectionBatchDetail> {
+    return this.rpc<CorrectionBatchDetail>('rpc_correction_batch_open', {
+      p_original_submission_id: originalSubmissionId, p_reason: reason,
+    });
+  }
+  async correctionBatchAttach(batchId: Uuid, adjustmentId: Uuid): Promise<CorrectionBatchDetail> {
+    return this.rpc<CorrectionBatchDetail>('rpc_correction_batch_attach', {
+      p_batch_id: batchId, p_adjustment_id: adjustmentId,
+    });
+  }
+  async correctionBatchDetach(batchId: Uuid, adjustmentId: Uuid): Promise<CorrectionBatchDetail> {
+    return this.rpc<CorrectionBatchDetail>('rpc_correction_batch_detach', {
+      p_batch_id: batchId, p_adjustment_id: adjustmentId,
+    });
+  }
+  async correctionBatchGet(batchId: Uuid): Promise<CorrectionBatchDetail> {
+    return this.rpc<CorrectionBatchDetail>('rpc_correction_batch_get', { p_batch_id: batchId });
+  }
+  async correctionBatchList(statuses?: string[] | null): Promise<CorrectionBatchHeader[]> {
+    return this.rpc<CorrectionBatchHeader[]>('rpc_correction_batch_list', { p_statuses: statuses ?? null });
+  }
+  async correctionBatchSubmit(batchId: Uuid): Promise<CorrectionBatchDetail> {
+    return this.rpc<CorrectionBatchDetail>('rpc_correction_batch_submit', { p_batch_id: batchId });
+  }
+  async correctionBatchApprove(
+    batchId: Uuid, comment?: string | null, acknowledgeNoWorkEntry = false,
+  ): Promise<CorrectionBatchDetail> {
+    return this.rpc<CorrectionBatchDetail>('rpc_correction_batch_approve', {
+      p_batch_id: batchId, p_comment: comment ?? null,
+      p_acknowledge_no_work_entry: acknowledgeNoWorkEntry,
+    });
+  }
+  async correctionBatchReturn(batchId: Uuid, comment: string): Promise<CorrectionBatchDetail> {
+    return this.rpc<CorrectionBatchDetail>('rpc_correction_batch_return', {
+      p_batch_id: batchId, p_comment: comment,
     });
   }
 

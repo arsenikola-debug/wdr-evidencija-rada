@@ -1,0 +1,115 @@
+import { useEffect, useMemo, useState } from 'react';
+import { Banner } from './Bits';
+import { addDays, periodError, weekStart } from '../features/payouts/model';
+import type { BaseType } from '../features/grid/eligibility';
+import type { IsoDate, SubmissionListItem, Uuid } from '../lib/api/types';
+
+const TYPE_LABEL: Record<BaseType, string> = { KARNET: 'Karnet', OBUKA: 'Obuka', OSTALO: 'Ostalo' };
+
+/**
+ * Vrh stranice Unos (redizajn §1, K1): Centar · Period · Karnet/Obuka.
+ *
+ * Izbor centra i perioda automatski otvara postojeći ili kreira nov draft
+ * (api.rpc_create_period_submission: jedinstven po centru i periodu, ≤ 7 dana,
+ * zaštićen od trke). Karnet i Obuka NISU posebne prijave — to su sekcije iste
+ * prijave; izbor sekcije samo menja koji dani su otvoreni za unos.
+ */
+export function EntryBar({
+  centers,
+  current,
+  baseType,
+  counts,
+  busy,
+  error,
+  onOpen,
+  onBaseType,
+  onCopyPreviousWeek,
+}: {
+  centers: Array<{ center_id: Uuid; center_code: string }>;
+  current: SubmissionListItem | null;
+  baseType: BaseType;
+  counts: Record<BaseType, number> | null;
+  busy: boolean;
+  error: string | null;
+  onOpen(centerId: Uuid, from: IsoDate, to: IsoDate): void;
+  onBaseType(t: BaseType): void;
+  onCopyPreviousWeek?(): void;
+}) {
+  const [centerId, setCenterId] = useState<Uuid>(current?.center_id ?? centers[0]?.center_id ?? '');
+  const [from, setFrom] = useState<IsoDate>(current?.period_start ?? weekStart(new Date().toISOString().slice(0, 10)));
+  const [to, setTo] = useState<IsoDate>(current?.period_end ?? addDays(from, 6));
+
+  // Kada se promeni otvorena prijava (npr. link iz „Moje prijave"), traka je prati.
+  useEffect(() => {
+    if (!current) return;
+    setCenterId(current.center_id);
+    setFrom(current.period_start);
+    setTo(current.period_end);
+  }, [current]);
+
+  const perr = periodError(from, to);
+  const same = current && current.center_id === centerId
+    && current.period_start === from && current.period_end === to;
+
+  // Automatsko otvaranje: posle kratke pauze, kada je izbor ispravan i drugačiji.
+  useEffect(() => {
+    if (!centerId || perr || same || busy) return;
+    const t = setTimeout(() => onOpen(centerId, from, to), 400);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [centerId, from, to]);
+
+  const tabs = useMemo<BaseType[]>(
+    () => (counts && counts.OSTALO > 0 ? ['KARNET', 'OBUKA', 'OSTALO'] : ['KARNET', 'OBUKA']),
+    [counts],
+  );
+
+  return (
+    <div className="entry-bar">
+      <div className="entry-bar-row">
+        <label>
+          <span>Centar</span>
+          {centers.length === 1 ? (
+            <strong className="entry-bar-static">{centers[0].center_code}</strong>
+          ) : (
+            <select value={centerId} onChange={(e) => setCenterId(e.target.value)} disabled={busy}>
+              {centers.map((c) => <option key={c.center_id} value={c.center_id}>{c.center_code}</option>)}
+            </select>
+          )}
+        </label>
+        <label>
+          <span>Od</span>
+          <input type="date" value={from} disabled={busy}
+            onChange={(e) => {
+              const v = e.target.value;
+              setFrom(v);
+              if (v && (!to || to < v || periodError(v, to))) setTo(addDays(v, 6));
+            }} />
+        </label>
+        <label>
+          <span>Do</span>
+          <input type="date" value={to} min={from} max={from ? addDays(from, 6) : undefined}
+            disabled={busy} onChange={(e) => setTo(e.target.value)} />
+        </label>
+        <div className="entry-bar-tabs" role="tablist" aria-label="Osnovna naknada">
+          {tabs.map((t) => (
+            <button key={t} type="button" role="tab" aria-selected={baseType === t}
+              className={baseType === t ? 'btn btn-primary' : 'btn'}
+              onClick={() => onBaseType(t)}>
+              {TYPE_LABEL[t]}{counts ? ` (${counts[t]})` : ''}
+            </button>
+          ))}
+        </div>
+        {onCopyPreviousWeek && (
+          <button type="button" className="btn btn-quiet" onClick={onCopyPreviousWeek} disabled={busy || !current}
+            title="Upoređuje spisak zaposlenih sa prethodnom nedeljom; ne kopira sate, statuse ni iznose">
+            Kopiraj prethodnu nedelju
+          </button>
+        )}
+        {busy && <span className="muted small">Otvaranje…</span>}
+      </div>
+      {perr && <Banner kind="warning">{perr}</Banner>}
+      {error && <Banner kind="error">{error}</Banner>}
+    </div>
+  );
+}

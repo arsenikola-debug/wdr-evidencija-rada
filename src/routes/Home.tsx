@@ -239,8 +239,8 @@ function OperatorHome() {
         subtitle={`Dostupni centri: ${session?.centers.map((c) => c.center_code).join(', ') || '—'}`}
         actions={
           canCreate && (
-            <Link className="btn btn-primary" to="/unos/novi">
-              Novi unos
+            <Link className="btn btn-primary" to="/unos">
+              Unos
             </Link>
           )
         }

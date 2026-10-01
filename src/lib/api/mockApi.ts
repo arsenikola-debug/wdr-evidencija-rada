@@ -1,8 +1,26 @@
 import type { OvertimeComponentInput, OvertimeComponentResult } from './types';
 import { WdrApiError, type WdrApi } from './WdrApi';
 import { decidePeriodReuse } from '../../features/periods/reuse';
+import { classifyNameMatch, personNameKey, trigramSimilarity } from '../../features/employees/nameMatch';
+import { addDays, hoursFromRange, isSaturday, periodError } from '../../features/payouts/model';
+import { buildPayoutReport, reportCategoryFor, type ReportSourceLine } from '../../features/reports/payoutReport';
 import type {
   AdminAttendanceStatus,
+  AdminPayoutReport,
+  CorrectionBatchDetail,
+  CorrectionBatchHeader,
+  CutoverReadiness,
+  NightWorkDeclaration,
+  PayoutContext,
+  PayoutDuplicateMatch,
+  PayoutEmployeeSearchResult,
+  PayoutDetail,
+  PayoutLine,
+  PayoutListItem,
+  PayoutRequestType,
+  PayoutStatus,
+  PayoutTypeInfo,
+  EntryEligibility,
   AdminReadiness,
   VerificationKind,
   ControlFindingDetail,
@@ -242,6 +260,8 @@ export class MockWdrApi implements WdrApi {
           // BA nije finansijska funkcija; nosi je administrator/BA.
           'analytics.ba.view', 'analytics.employee.view', 'analytics.daily.view',
           'controls.view', 'controls.run', 'controls.review', 'controls.manage',
+          'period.create', 'payout.create', 'payout.approve', 'payout.cutover.manage',
+          'night_work.declare', 'adjustment.approve',
         ],
         centers: [{ center_id: CENTER_B6, center_code: 'B6', center_name: 'Rakovica',
                     can_write: true }],
@@ -260,6 +280,7 @@ export class MockWdrApi implements WdrApi {
           'finance.queue.view', 'finance.approve', 'finance.return',
           'finance.history.view', 'finance.export',
           'adjustment.approve', 'comment.write', 'notification.view_own',
+          'payout.approve',
         ],
         centers: [],
       };
@@ -276,6 +297,7 @@ export class MockWdrApi implements WdrApi {
         'employee.create', 'employee.edit', 'employee.assign_center',
         'transport.assign_employee',
         'comment.write', 'notification.view_own',
+        'period.create', 'payout.create', 'night_work.declare',
       ],
       centers: [{ center_id: CENTER_B6, center_code: 'B6', center_name: 'Rakovica', can_write: true }],
     };
@@ -319,8 +341,11 @@ export class MockWdrApi implements WdrApi {
       Math.round(
         (Date.parse(`${periodEnd}T00:00:00Z`) - Date.parse(`${periodStart}T00:00:00Z`)) / 86400000,
       ) + 1;
-    if (days > 62) {
-      throw new WdrApiError('Period je duži od 62 dana.', 'PERIOD_RANGE_TOO_LONG');
+    if (days > 7) {
+      throw new WdrApiError(
+        `Period može imati najviše 7 kalendarskih dana (izabrano: ${days}).`,
+        'PERIOD_RANGE_TOO_LONG',
+      );
     }
 
     const existing = await this.listSubmissions();
@@ -434,6 +459,31 @@ export class MockWdrApi implements WdrApi {
       })),
       cells: this.entries.map((e) => this.toCell(e)),
       validation: this.validate(),
+    };
+  }
+
+  /**
+   * Ogledalo api.rpc_get_entry_eligibility (0059). Demo zaposleni su u radnom
+   * odnosu i raspoređeni u centar cele demo nedelje, pa je svaki dan dozvoljen;
+   * tip je iz demo raspodele. U produkciji odlučuje baza.
+   */
+  async getEntryEligibility(submissionId: Uuid): Promise<EntryEligibility> {
+    const grid = await this.getGrid(submissionId);
+    return {
+      submission_id: grid.submission.id,
+      center_id: grid.submission.center_id,
+      period_start: grid.submission.period_start,
+      period_end: grid.submission.period_end,
+      basis: 'EMPLOYMENT_AND_ASSIGNMENT_ON_DATE',
+      days: grid.employees.flatMap((e) =>
+        grid.dates.map((d) => ({
+          employee_id: e.employee_id,
+          work_date: d,
+          eligible: true,
+          lock_reason: null,
+          payment_type_code: e.primary_payment_type_code,
+        })),
+      ),
     };
   }
 
@@ -1181,7 +1231,7 @@ export class MockWdrApi implements WdrApi {
     _centerIds?: Uuid[],
     _from?: string | null,
     _to?: string | null,
-    types?: Array<'PERIOD' | 'ADJUSTMENT' | 'COURIER_STOPS' | 'COURIER_STOP_ADJUSTMENT'> | null,
+    types?: Array<'PERIOD' | 'ADJUSTMENT' | 'COURIER_STOPS' | 'COURIER_STOP_ADJUSTMENT' | 'PAYOUT' | 'PAYOUT_CORRECTION'> | null,
   ): Promise<FinanceHistory> {
     await delay(150);
     if (this.role !== 'finance') {
@@ -2102,7 +2152,8 @@ export class MockWdrApi implements WdrApi {
       this.stopState.entries.delete(key);
       return { deleted: true };
     }
-    const emp = EMPLOYEES.find((e) => e.employee_id === employeeId);
+    // K13: kurir može biti iz drugog centra (izabran kroz globalni lookup).
+    const emp = this.directory().find((e) => e.id === employeeId);
     this.stopState.entries.set(key, {
       submission_id: submissionId, employee_id: employeeId,
       employee_name: emp?.full_name ?? 'Nepoznat kurir',
@@ -2647,10 +2698,21 @@ export class MockWdrApi implements WdrApi {
     employeeCode: string | null, firstName: string, lastName: string,
   ): Promise<EmployeeDuplicateCheck> {
     await delay(120);
-    const full = `${lastName.trim()} ${firstName.trim()}`.toLowerCase();
-    const byCode = employeeCode
-      ? this.employeeRows.find((r) => r.employee.employee_code === employeeCode.trim())
-      : undefined;
+    // Isto pravilo kao 0057: normalizovan ključ (bez dijakritika, redosled nebitan),
+    // trigram ili Levenshtein ≤ 1/2. Ništa se ne spaja automatski.
+    const candidate = `${lastName.trim()} ${firstName.trim()}`;
+    const matches = this.employeeRows
+      .map((r) => ({
+        r,
+        m: classifyNameMatch({
+          candidateFullName: candidate,
+          candidateCode: employeeCode,
+          existingFullName: r.employee.full_name,
+          existingCode: r.employee.employee_code,
+        }),
+      }))
+      .filter((x) => x.m !== null);
+    const byCode = matches.find((x) => x.m?.reason === 'EXACT_CODE')?.r;
     return {
       exact_code: byCode
         ? {
@@ -2660,25 +2722,24 @@ export class MockWdrApi implements WdrApi {
             active: byCode.employee.active,
           }
         : null,
-      exact_name: this.employeeRows
-        .filter((r) => r.employee.full_name.toLowerCase() === full)
-        .map((r) => ({
+      exact_name: matches
+        .filter((x) => x.m?.reason === 'EXACT_NAME')
+        .map(({ r }) => ({
           id: r.employee.id,
           full_name: r.employee.full_name,
           employee_code: r.employee.employee_code,
           active: r.employee.active,
           employment_start_date: r.employee.employment_start_date,
         })),
-      // Mock ne radi trigram sličnost — poredi se samo prezime.
-      similar: this.employeeRows
-        .filter((r) => r.employee.full_name.toLowerCase() !== full
-          && r.employee.last_name.toLowerCase() === lastName.trim().toLowerCase())
-        .map((r) => ({
+      similar: matches
+        .filter((x) => x.m?.reason === 'SIMILAR_NAME')
+        .sort((a, b) => (b.m?.score ?? 0) - (a.m?.score ?? 0))
+        .map(({ r, m }) => ({
           id: r.employee.id,
           full_name: r.employee.full_name,
           employee_code: r.employee.employee_code,
           active: r.employee.active,
-          similarity: 0.8,
+          similarity: m?.score ?? 0,
         })),
       note: 'Ista šifra je greška. Isto ili slično ime je upozorenje koje se potvrđuje.',
     };
@@ -2872,6 +2933,544 @@ export class MockWdrApi implements WdrApi {
     return row;
   }
 
+
+  // --- dodatne isplate (ogledalo 0062/0063) ---------------------------------
+  //
+  // DEMO: tarife su sintetičke i postoje samo da se tok vidi bez baze. U
+  // produkciji cenu određuje app.payout_price_line iz pravila centra zahteva.
+  private payoutCutover: IsoDate | null = '2026-07-13';
+  private payoutReqs: Array<{
+    id: Uuid; request_type: PayoutRequestType; center_id: Uuid;
+    period_start: IsoDate; period_end: IsoDate; status: PayoutStatus;
+    corrects_request_id: Uuid | null; correction_reason: string | null;
+    submitted_at: string | null; approved_at: string | null; returned_at: string | null;
+    return_reason: string | null; created_at: string;
+    employees: Array<{ employee_id: Uuid; source: 'MANUAL' | 'COPY_PREVIOUS' | 'NIGHT_DECLARATION' }>;
+    lines: PayoutLine[];
+  }> = [];
+  private nightDecl: NightWorkDeclaration[] = [];
+  private nextPayoutLine = 1;
+
+  private static readonly PAYOUT_TYPES: PayoutTypeInfo[] = [
+    { code: 'DNEVNICA', name: 'Dnevnice', unit_model: 'DAY', input_mode: 'DAYS', saturday_only: false, suggest_night_declared: false, payment_type_code: 'DODATNA_DNEVNICA' },
+    { code: 'ISPOMOC', name: 'Ispomoć', unit_model: 'DAY', input_mode: 'DAYS', saturday_only: false, suggest_night_declared: false, payment_type_code: 'ISPOMOC' },
+    { code: 'RADNA_SUBOTA', name: 'Radna subota', unit_model: 'HOUR', input_mode: 'TIME_RANGE', saturday_only: true, suggest_night_declared: false, payment_type_code: 'RADNA_SUBOTA' },
+    { code: 'PREKOVREMENI', name: 'Prekovremeni rad', unit_model: 'HOUR', input_mode: 'HOURS', saturday_only: false, suggest_night_declared: false, payment_type_code: 'PREKOVREMENI' },
+    { code: 'NOCNI_RAD', name: 'Noćni rad', unit_model: 'HOUR', input_mode: 'TIME_RANGE', saturday_only: false, suggest_night_declared: true, payment_type_code: 'NOCNI_RAD' },
+  ];
+  private static readonly PAYOUT_DEMO_RATE: Record<PayoutRequestType, number> = {
+    DNEVNICA: 1500, ISPOMOC: 700, RADNA_SUBOTA: 600, PREKOVREMENI: 450, NOCNI_RAD: 300,
+  };
+
+  /**
+   * DEMO „cela baza" za K13 lookup: zaposleni operaterovog centra + nekoliko
+   * zaposlenih iz DRUGOG centra koje operater NE vidi kroz getEmployees.
+   */
+  private static readonly OTHER_CENTER_DEMO = [
+    { id: 'x-bz-1', full_name: 'Arsenović Nikola', employee_code: 'E-091', center_code: 'BZ',
+      active: true, employment_start_date: '2026-01-01', employment_end_date: null as string | null },
+    { id: 'x-bz-2', full_name: 'Petrović Petar', employee_code: 'E-092', center_code: 'BZ',
+      active: true, employment_start_date: '2026-01-01', employment_end_date: null as string | null },
+  ];
+
+  private directory() {
+    return [
+      ...this.employeeRows.map((r) => ({
+        id: r.employee.id, full_name: r.employee.full_name, employee_code: r.employee.employee_code,
+        center_code: r.assignments.find((a) => a.is_current)?.center_code ?? null,
+        active: r.employee.active, employment_start_date: r.employee.employment_start_date,
+        employment_end_date: r.employee.employment_end_date,
+      })),
+      ...MockWdrApi.OTHER_CENTER_DEMO,
+    ];
+  }
+
+  async payoutEmployeeSearch(query: string, opts?: {
+    from?: IsoDate | null; to?: IsoDate | null; limit?: number; offset?: number;
+  }): Promise<PayoutEmployeeSearchResult> {
+    await delay(60);
+    this.requirePayoutWrite();
+    const key = personNameKey(query);
+    const limit = Math.min(Math.max(opts?.limit ?? 20, 1), 50);
+    const offset = Math.max(opts?.offset ?? 0, 0);
+    if (key.length < 2) return { items: [], has_more: false, limit, offset };
+    const tokens = key.split(' ');
+    const scored = this.directory().map((e) => {
+      const k = personNameKey(e.full_name);
+      const all = tokens.every((t) => k.includes(t));
+      const words = k.split(' ');
+      const wordSim = Math.max(...tokens.map((t) => Math.max(...words.map((w) => trigramSimilarity(w, t)))));
+      const score = Math.max(
+        e.employee_code === query.trim() ? 1 : 0, k === key ? 1 : 0, all ? 0.95 : 0,
+        trigramSimilarity(k, key), wordSim,
+      );
+      return { e, score };
+    }).filter((x) => x.score >= 0.45)
+      .sort((a, b) => b.score - a.score || a.e.full_name.localeCompare(b.e.full_name, 'sr'));
+    const page = scored.slice(offset, offset + limit + 1);
+    return {
+      items: page.slice(0, limit).map(({ e }) => ({
+        id: e.id, full_name: e.full_name, employee_code: e.employee_code, center_code: e.center_code,
+        active: e.active,
+        employed_in_period: opts?.from && opts?.to
+          ? e.employment_start_date <= opts.to && (!e.employment_end_date || e.employment_end_date >= opts.from)
+          : null,
+      })),
+      has_more: page.length > limit, limit, offset,
+    };
+  }
+
+  async payoutEmployeeDuplicateCheck(
+    firstName: string, lastName: string, employeeCode?: string | null,
+  ): Promise<{ matches: PayoutDuplicateMatch[]; note: string }> {
+    await delay(60);
+    this.requirePayoutWrite();
+    const candidate = `${lastName.trim()} ${firstName.trim()}`;
+    const matches = this.directory().flatMap((e) => {
+      const m = classifyNameMatch({ candidateFullName: candidate, candidateCode: employeeCode,
+        existingFullName: e.full_name, existingCode: e.employee_code });
+      return m ? [{ id: e.id, full_name: e.full_name, employee_code: e.employee_code,
+        center_code: e.center_code, active: e.active, match_reason: m.reason, score: m.score }] : [];
+    });
+    return { matches, note: 'Provera nad celom bazom (DEMO).' };
+  }
+
+  private requirePayoutWrite() {
+    this.requireSession();
+    if (this.role === 'finance') {
+      throw new WdrApiError('Nedovoljna prava: potrebna permisija payout.create.', '42501');
+    }
+  }
+
+  private payoutDetail(id: Uuid): PayoutDetail {
+    const r = this.payoutReqs.find((x) => x.id === id);
+    if (!r) throw new WdrApiError('Zahtev ne postoji.', 'P0002');
+    const t = MockWdrApi.PAYOUT_TYPES.find((x) => x.code === r.request_type)!;
+    const center = STOP_DEMO_CENTERS.find((c) => c.id === r.center_id);
+    const dates: IsoDate[] = [];
+    for (let d = r.period_start; d <= r.period_end; d = addDays(d, 1)) dates.push(d);
+    const emps = r.employees.map((pe) => {
+      const row = this.directory().find((x) => x.id === pe.employee_id)!;
+      const start = row.employment_start_date;
+      const end = row.employment_end_date;
+      return {
+        employee_id: pe.employee_id, full_name: row.full_name,
+        employee_code: row.employee_code, source: pe.source,
+        employed_dates: dates.filter((d) => d >= start && (!end || d <= end)),
+      };
+    });
+    const summary = emps.map((e) => {
+      const ls = r.lines.filter((l) => l.employee_id === e.employee_id);
+      return {
+        employee_id: e.employee_id, full_name: e.full_name, employee_code: e.employee_code,
+        days: ls.length, units: ls.reduce((s, l) => s + l.units, 0),
+        amount: Math.round(ls.reduce((s, l) => s + (l.amount ?? 0), 0) * 100) / 100, problems: 0,
+      };
+    });
+    return {
+      request: {
+        id: r.id, request_type: r.request_type, request_type_name: t.name,
+        unit_model: t.unit_model, input_mode: t.input_mode, saturday_only: t.saturday_only,
+        center_id: r.center_id, center_code: center?.code ?? '?', center_name: center?.name ?? '?',
+        period_start: r.period_start, period_end: r.period_end, status: r.status,
+        is_correction: r.corrects_request_id !== null, corrects_request_id: r.corrects_request_id,
+        correction_reason: r.correction_reason,
+        corrects: r.corrects_request_id
+          ? (() => {
+              const o = this.payoutReqs.find((x) => x.id === r.corrects_request_id)!;
+              return { id: o.id, period_start: o.period_start, period_end: o.period_end,
+                       status: o.status, approved_at: o.approved_at };
+            })()
+          : null,
+        submitted_at: r.submitted_at, submitted_by: r.submitted_at ? 'Operater (DEMO)' : null,
+        returned_at: r.returned_at, return_reason: r.return_reason,
+        approved_at: r.approved_at, approved_by: r.approved_at ? 'Finansije (DEMO)' : null,
+        created_at: r.created_at, created_by: 'Operater (DEMO)',
+      },
+      dates,
+      employees: emps.sort((a, b) => a.full_name.localeCompare(b.full_name, 'sr')),
+      lines: [...r.lines].sort((a, b) => a.work_date.localeCompare(b.work_date)),
+      summary,
+      totals: {
+        lines: r.lines.length, employees: new Set(r.lines.map((l) => l.employee_id)).size,
+        units: r.lines.reduce((s, l) => s + l.units, 0),
+        amount: Math.round(r.lines.reduce((s, l) => s + (l.amount ?? 0), 0) * 100) / 100,
+        problems: 0, unusual: 0,
+      },
+      can_edit: (r.status === 'DRAFT' || r.status === 'RETURNED') && this.role !== 'finance',
+      can_approve: r.status === 'SUBMITTED' && this.role === 'finance',
+      cutover_date: this.payoutCutover,
+    };
+  }
+
+  private payoutItem(id: Uuid): PayoutListItem {
+    const d = this.payoutDetail(id);
+    return {
+      id, request_type: d.request.request_type, request_type_name: d.request.request_type_name,
+      center_id: d.request.center_id, center_code: d.request.center_code,
+      period_start: d.request.period_start, period_end: d.request.period_end,
+      status: d.request.status, is_correction: d.request.is_correction,
+      corrects_request_id: d.request.corrects_request_id,
+      submitted_at: d.request.submitted_at, approved_at: d.request.approved_at,
+      employees: d.employees.length, lines: d.lines.length, total_amount: d.totals.amount,
+    };
+  }
+
+  private payoutEditable(id: Uuid) {
+    this.requirePayoutWrite();
+    const r = this.payoutReqs.find((x) => x.id === id);
+    if (!r) throw new WdrApiError('Zahtev ne postoji.', 'P0002');
+    if (r.status !== 'DRAFT' && r.status !== 'RETURNED') {
+      throw new WdrApiError('Zahtev nije otvoren za izmenu (PAYOUT_NOT_EDITABLE).', 'PAYOUT_NOT_EDITABLE');
+    }
+    return r;
+  }
+
+  async payoutContext(): Promise<PayoutContext> {
+    await delay(80);
+    this.requireSession();
+    return {
+      cutover_date: this.payoutCutover, active: this.payoutCutover !== null,
+      types: MockWdrApi.PAYOUT_TYPES,
+      centers: this.role === 'finance' ? [] : STOP_DEMO_CENTERS,
+      max_period_days: 7,
+    };
+  }
+
+  async payoutList(filter?: {
+    centerId?: Uuid | null; requestType?: PayoutRequestType | null; statuses?: PayoutStatus[] | null;
+  }): Promise<PayoutListItem[]> {
+    await delay(80);
+    this.requireSession();
+    return this.payoutReqs
+      .filter((r) => (!filter?.centerId || r.center_id === filter.centerId)
+        && (!filter?.requestType || r.request_type === filter.requestType)
+        && (!filter?.statuses || filter.statuses.includes(r.status))
+        && (this.role !== 'finance' || r.status !== 'DRAFT'))
+      .map((r) => this.payoutItem(r.id));
+  }
+
+  async payoutGet(requestId: Uuid): Promise<PayoutDetail> {
+    await delay(80);
+    this.requireSession();
+    return this.payoutDetail(requestId);
+  }
+
+  async payoutOpen(type: PayoutRequestType, centerId: Uuid, from: IsoDate, to: IsoDate): Promise<PayoutDetail> {
+    await delay(120);
+    this.requirePayoutWrite();
+    const err = periodError(from, to);
+    if (err) throw new WdrApiError(err, to < from ? 'PERIOD_RANGE_INVALID' : 'PERIOD_RANGE_TOO_LONG');
+    if (!this.payoutCutover) {
+      throw new WdrApiError('Dodatne isplate još nisu aktivirane.', 'PAYOUT_CUTOVER_NOT_ACTIVE');
+    }
+    if (from < this.payoutCutover) {
+      throw new WdrApiError(`Period počinje pre cutover-a (${this.payoutCutover}).`, 'PAYOUT_BEFORE_CUTOVER');
+    }
+    const hit = this.payoutReqs.find((r) => r.center_id === centerId && r.request_type === type
+      && r.corrects_request_id === null && r.period_start <= to && r.period_end >= from);
+    if (hit) {
+      if (hit.period_start !== from || hit.period_end !== to) {
+        throw new WdrApiError('Postoji zahtev koji se preklapa.', 'PAYOUT_OVERLAPS_EXISTING');
+      }
+      return { ...this.payoutDetail(hit.id), created: false };
+    }
+    const id = `pr-${this.payoutReqs.length + 1}`;
+    const employees = type === 'NOCNI_RAD'
+      ? this.nightDecl.filter((d) => d.active).map((d) => ({ employee_id: d.employee_id, source: 'NIGHT_DECLARATION' as const }))
+      : [];
+    this.payoutReqs.push({
+      id, request_type: type, center_id: centerId, period_start: from, period_end: to,
+      status: 'DRAFT', corrects_request_id: null, correction_reason: null,
+      submitted_at: null, approved_at: null, returned_at: null, return_reason: null,
+      created_at: new Date().toISOString(), employees, lines: [],
+    });
+    // (mock: stanje je u memoriji)
+    return { ...this.payoutDetail(id), created: true };
+  }
+
+  async payoutOpenCorrection(originalRequestId: Uuid, reason: string): Promise<PayoutDetail> {
+    await delay(100);
+    this.requirePayoutWrite();
+    const o = this.payoutReqs.find((r) => r.id === originalRequestId);
+    if (!o) throw new WdrApiError('Originalni zahtev ne postoji.', 'P0002');
+    if (o.status !== 'FINANCE_APPROVED') {
+      throw new WdrApiError('Korekcija je moguća samo za odobren zahtev.', 'PAYOUT_CORRECTION_NEEDS_APPROVED');
+    }
+    if (reason.trim().length < 10) throw new WdrApiError('Razlog korekcije mora imati bar 10 znakova.', '23514');
+    const id = `pr-${this.payoutReqs.length + 1}`;
+    this.payoutReqs.push({
+      ...o, id, status: 'DRAFT', corrects_request_id: o.id, correction_reason: reason.trim(),
+      submitted_at: null, approved_at: null, returned_at: null, return_reason: null,
+      created_at: new Date().toISOString(), employees: [], lines: [],
+    });
+    // (mock: stanje je u memoriji)
+    return this.payoutDetail(id);
+  }
+
+  async payoutSetEmployees(requestId: Uuid, add?: Uuid[] | null, remove?: Uuid[] | null): Promise<PayoutDetail> {
+    await delay(60);
+    const r = this.payoutEditable(requestId);
+    for (const e of add ?? []) {
+      // K13: zaposleni iz bilo kog centra (kontrolisani lookup), ne samo vidljivi.
+      if (!this.directory().some((x) => x.id === e)) {
+        throw new WdrApiError('Zaposleni ne postoji.', 'P0002');
+      }
+      if (!r.employees.some((x) => x.employee_id === e)) r.employees.push({ employee_id: e, source: 'MANUAL' });
+    }
+    if (remove?.length) {
+      r.employees = r.employees.filter((x) => !remove.includes(x.employee_id));
+      r.lines = r.lines.filter((l) => !remove.includes(l.employee_id));
+    }
+    // (mock: stanje je u memoriji)
+    return this.payoutDetail(requestId);
+  }
+
+  async payoutSetLine(input: {
+    request_id: Uuid; employee_id: Uuid; work_date: IsoDate;
+    units?: number | null; time_from?: string | null; time_to?: string | null; note?: string | null;
+  }): Promise<PayoutDetail> {
+    await delay(50);
+    const r = this.payoutEditable(input.request_id);
+    const t = MockWdrApi.PAYOUT_TYPES.find((x) => x.code === r.request_type)!;
+    if (!r.employees.some((e) => e.employee_id === input.employee_id)) {
+      throw new WdrApiError('Zaposleni nije na spisku zahteva.', 'PAYOUT_EMPLOYEE_NOT_LISTED');
+    }
+    r.lines = r.lines.filter((l) => !(l.employee_id === input.employee_id && l.work_date === input.work_date));
+    const empty = t.input_mode === 'TIME_RANGE' ? !input.time_from && !input.time_to : !input.units;
+    if (!empty) {
+      if (t.saturday_only && !isSaturday(input.work_date)) {
+        throw new WdrApiError('Radna subota se unosi samo za subotu.', 'PAYOUT_NOT_SATURDAY');
+      }
+      let units = input.units ?? 1;
+      let crosses = false;
+      if (t.input_mode === 'TIME_RANGE') {
+        const h = hoursFromRange(input.time_from ?? '', input.time_to ?? '');
+        if (!h) throw new WdrApiError('Vreme od i do ne mogu biti isti.', 'PAYOUT_TIME_EMPTY');
+        units = h.hours;
+        crosses = h.crossesMidnight;
+      }
+      if (t.input_mode === 'DAYS' && units !== 1) {
+        throw new WdrApiError('Dnevna naknada ima tačno 1 jedinicu po danu.', 'PAYOUT_DAILY_UNITS');
+      }
+      const rate = MockWdrApi.PAYOUT_DEMO_RATE[r.request_type];
+      r.lines.push({
+        id: this.nextPayoutLine++, employee_id: input.employee_id, work_date: input.work_date,
+        units, time_from: input.time_from ?? null, time_to: input.time_to ?? null,
+        crosses_midnight: crosses, note: input.note ?? null, rule_id: null, rule_version: null,
+        unit_type: t.unit_model === 'HOUR' ? 'PER_HOUR' : 'PER_EVENT', rate,
+        amount: Math.round(rate * units * 100) / 100, problem: null, attendance_status: null, unusual: false,
+      });
+    }
+    // (mock: stanje je u memoriji)
+    return this.payoutDetail(input.request_id);
+  }
+
+  async payoutCopyPrevious(requestId: Uuid): Promise<PayoutDetail> {
+    await delay(80);
+    const r = this.payoutEditable(requestId);
+    const prev = this.payoutReqs
+      .filter((p) => p.center_id === r.center_id && p.request_type === r.request_type
+        && p.corrects_request_id === null && p.period_end < r.period_start)
+      .sort((a, b) => b.period_end.localeCompare(a.period_end))[0];
+    let added = 0;
+    for (const e of prev?.employees ?? []) {
+      if (!r.employees.some((x) => x.employee_id === e.employee_id)) {
+        r.employees.push({ employee_id: e.employee_id, source: 'COPY_PREVIOUS' });
+        added += 1;
+      }
+    }
+    // (mock: stanje je u memoriji)
+    return { ...this.payoutDetail(requestId), copy: { source_request_id: prev?.id ?? null, added, skipped: 0 } };
+  }
+
+  async payoutSubmit(requestId: Uuid): Promise<PayoutDetail> {
+    await delay(100);
+    const r = this.payoutEditable(requestId);
+    if (r.lines.length === 0) throw new WdrApiError('Zahtev nema nijednu stavku.', 'PAYOUT_EMPTY');
+    r.status = 'SUBMITTED';
+    r.submitted_at = new Date().toISOString();
+    // (mock: stanje je u memoriji)
+    return this.payoutDetail(requestId);
+  }
+
+  private requirePayoutFinance() {
+    this.requireSession();
+    if (this.role !== 'finance' && this.role !== 'admin') {
+      throw new WdrApiError('Nedovoljna prava: potrebna permisija payout.approve.', '42501');
+    }
+  }
+
+  async payoutFinanceQueue(statuses?: PayoutStatus[] | null): Promise<PayoutListItem[]> {
+    this.requirePayoutFinance();
+    return this.payoutList({ statuses: statuses ?? ['SUBMITTED'] });
+  }
+
+  async payoutFinanceApprove(requestId: Uuid): Promise<PayoutDetail> {
+    await delay(120);
+    this.requirePayoutFinance();
+    const r = this.payoutReqs.find((x) => x.id === requestId);
+    if (!r || r.status !== 'SUBMITTED') {
+      throw new WdrApiError('Odobriti se može samo poslat zahtev.', 'APPROVAL_WRONG_STATUS');
+    }
+    r.status = 'FINANCE_APPROVED';
+    r.approved_at = new Date().toISOString();
+    // (mock: stanje je u memoriji)
+    return this.payoutDetail(requestId);
+  }
+
+  async payoutFinanceReturn(requestId: Uuid, comment: string): Promise<PayoutDetail> {
+    await delay(100);
+    this.requirePayoutFinance();
+    const r = this.payoutReqs.find((x) => x.id === requestId);
+    if (!r || r.status !== 'SUBMITTED') throw new WdrApiError('Vratiti se može samo poslat zahtev.', '42501');
+    if (comment.trim().length < 10) throw new WdrApiError('Obrazloženje mora imati bar 10 znakova.', '23514');
+    r.status = 'RETURNED';
+    r.returned_at = new Date().toISOString();
+    r.return_reason = comment.trim();
+    // (mock: stanje je u memoriji)
+    return this.payoutDetail(requestId);
+  }
+
+  async setNightWorkDeclaration(input: {
+    employee_id: Uuid; center_id: Uuid; declared: boolean; from: IsoDate;
+  }): Promise<unknown> {
+    await delay(60);
+    this.requirePayoutWrite();
+    const cur = this.nightDecl.find((d) => d.employee_id === input.employee_id && d.active);
+    if (input.declared && !cur) {
+      const row = this.directory().find((x) => x.id === input.employee_id)!;
+      this.nightDecl.push({
+        id: `nd-${this.nightDecl.length + 1}`, employee_id: input.employee_id,
+        full_name: row.full_name, employee_code: row.employee_code,
+        valid_from: input.from, valid_to: null, active: true,
+      });
+    } else if (!input.declared && cur) {
+      cur.valid_to = addDays(input.from, -1);
+      cur.active = false;
+    }
+    return { changed: true };
+  }
+
+  async nightWorkDeclarations(): Promise<NightWorkDeclaration[]> {
+    await delay(40);
+    return [...this.nightDecl];
+  }
+
+  async adminPayoutCutoverReadiness(date: IsoDate): Promise<CutoverReadiness> {
+    await delay(80);
+    this.requireAdmin();
+    const blockers: CutoverReadiness['blockers'] = [];
+    if (this.payoutCutover) blockers.push({ code: 'CUTOVER_ALREADY_ACTIVE', message: `Cutover je već aktiviran od ${this.payoutCutover}.`, center_code: null, detail: null });
+    if (new Date(`${date}T00:00:00Z`).getUTCDay() !== 1) blockers.push({ code: 'DATE_NOT_MONDAY', message: 'Cutover mora biti ponedeljak.', center_code: null, detail: null });
+    return {
+      date, active_cutover_date: this.payoutCutover, blockers,
+      warnings: [{ code: 'DEMO', message: 'DEMO: mock ne proverava stvarne podatke.', center_code: null, detail: null }],
+      can_activate: blockers.length === 0, deactivates: [],
+    };
+  }
+
+  async adminActivatePayoutCutover(date: IsoDate, confirmation: string): Promise<CutoverReadiness> {
+    const r = await this.adminPayoutCutoverReadiness(date);
+    if (confirmation !== 'AKTIVIRAJ') throw new WdrApiError('Aktivacija zahteva potvrdu „AKTIVIRAJ".', '22023');
+    if (!r.can_activate) throw new WdrApiError('Cutover se ne može aktivirati.', 'CUTOVER_BLOCKED');
+    this.payoutCutover = date;
+    return this.adminPayoutCutoverReadiness(date);
+  }
+
+  // --- K8 korekcije (ogledalo 0064) -----------------------------------------
+  private batches: Array<{ header: CorrectionBatchHeader; items: Uuid[] }> = [];
+
+  private batchDetail(id: Uuid): CorrectionBatchDetail {
+    const b = this.batches.find((x) => x.header.id === id);
+    if (!b) throw new WdrApiError('Korekcija ne postoji.', 'P0002');
+    const items = b.items.map((i) => this.requireAdjustment(i));
+    const amount = items.reduce((s, a) => s + ((a as unknown as { calculation?: { amount_signed?: number } })
+      .calculation?.amount_signed ?? 0), 0);
+    return { batch: b.header, items, totals: { items: items.length, amount } };
+  }
+
+  async correctionBatchOpen(originalSubmissionId: Uuid, reason: string): Promise<CorrectionBatchDetail> {
+    await delay(80);
+    this.requireSession();
+    if (this.status !== 'FINANCE_APPROVED' && this.status !== 'CLOSED') {
+      throw new WdrApiError('Korekcija je moguća samo za odobren obračun.', 'CORRECTION_NEEDS_APPROVED');
+    }
+    if (reason.trim().length < 10) throw new WdrApiError('Razlog korekcije mora imati bar 10 znakova.', '23514');
+    const id = `cb-${this.batches.length + 1}`;
+    this.batches.push({
+      header: {
+        id, status: 'DRAFT', reason: reason.trim(), original_submission_id: originalSubmissionId,
+        original_period_start: '2026-07-06', original_period_end: '2026-07-12',
+        original_status: this.status, center_id: CENTER_B6, center_code: 'B6',
+        created_at: new Date().toISOString(), created_by: 'Operater (DEMO)',
+        submitted_at: null, returned_at: null, return_reason: null, approved_at: null, approved_by: null,
+      },
+      items: [],
+    });
+    return this.batchDetail(id);
+  }
+
+  async correctionBatchAttach(batchId: Uuid, adjustmentId: Uuid): Promise<CorrectionBatchDetail> {
+    const b = this.batches.find((x) => x.header.id === batchId);
+    if (!b) throw new WdrApiError('Korekcija ne postoji.', 'P0002');
+    if (this.batches.some((x) => x.items.includes(adjustmentId))) {
+      throw new WdrApiError('Stavka je već u korekciji.', '23505');
+    }
+    b.items.push(adjustmentId);
+    return this.batchDetail(batchId);
+  }
+
+  async correctionBatchDetach(batchId: Uuid, adjustmentId: Uuid): Promise<CorrectionBatchDetail> {
+    const b = this.batches.find((x) => x.header.id === batchId);
+    if (b) b.items = b.items.filter((i) => i !== adjustmentId);
+    return this.batchDetail(batchId);
+  }
+
+  async correctionBatchGet(batchId: Uuid): Promise<CorrectionBatchDetail> {
+    return this.batchDetail(batchId);
+  }
+
+  async correctionBatchList(statuses?: string[] | null): Promise<CorrectionBatchHeader[]> {
+    return this.batches
+      .filter((b) => !statuses || statuses.includes(b.header.status))
+      .map((b) => ({ ...b.header, totals: this.batchDetail(b.header.id).totals }));
+  }
+
+  async correctionBatchSubmit(batchId: Uuid): Promise<CorrectionBatchDetail> {
+    const b = this.batches.find((x) => x.header.id === batchId);
+    if (!b || b.items.length === 0) throw new WdrApiError('Korekcija nema stavki.', 'CORRECTION_EMPTY');
+    for (const i of b.items) {
+      const a = this.requireAdjustment(i);
+      if (a.status === 'DRAFT' || a.status === 'RETURNED') await this.submitAdjustment(i);
+    }
+    b.header.status = 'SUBMITTED';
+    b.header.submitted_at = new Date().toISOString();
+    return this.batchDetail(batchId);
+  }
+
+  async correctionBatchApprove(batchId: Uuid, comment?: string | null): Promise<CorrectionBatchDetail> {
+    const b = this.batches.find((x) => x.header.id === batchId);
+    if (!b || b.header.status !== 'SUBMITTED') throw new WdrApiError('Odobriti se može samo poslata korekcija.', '42501');
+    for (const i of b.items) {
+      if (this.requireAdjustment(i).status === 'SUBMITTED') await this.approveAdjustment(i, comment ?? undefined, true);
+    }
+    b.header.status = 'APPROVED';
+    b.header.approved_at = new Date().toISOString();
+    return this.batchDetail(batchId);
+  }
+
+  async correctionBatchReturn(batchId: Uuid, comment: string): Promise<CorrectionBatchDetail> {
+    const b = this.batches.find((x) => x.header.id === batchId);
+    if (!b || b.header.status !== 'SUBMITTED') throw new WdrApiError('Vratiti se može samo poslata korekcija.', '42501');
+    for (const i of b.items) {
+      if (this.requireAdjustment(i).status === 'SUBMITTED') await this.returnAdjustment(i, comment);
+    }
+    b.header.status = 'RETURNED';
+    b.header.returned_at = new Date().toISOString();
+    b.header.return_reason = comment;
+    return this.batchDetail(batchId);
+  }
 
   // --- BA analitika --------------------------------------------------------
 
@@ -3087,6 +3686,67 @@ export class MockWdrApi implements WdrApi {
       total_rows: items.length,
       items,
     };
+  }
+
+  /**
+   * Ogledalo api.rpc_admin_payout_report (0059): samo ODOBRENI demo podaci —
+   * demo prijava B6 posle odobrenja i odobreni stopovi (uz odobrene korekcije).
+   */
+  async adminPayoutReport(
+    from: IsoDate, to: IsoDate, centerIds?: Uuid[] | null,
+  ): Promise<AdminPayoutReport> {
+    await delay(200);
+    this.requireBa();
+    const lines: ReportSourceLine[] = [];
+    const codeOf = new Map(EMPLOYEES.map((e) => [e.employee_id, e.employee_code]));
+
+    if (this.status === 'FINANCE_APPROVED' || this.status === 'CLOSED') {
+      const preview = await this.getSubmissionPreview(SUBMISSION_B6);
+      for (const l of preview.lines) {
+        if (l.status !== 'RESOLVED' || l.calculated_amount == null) continue;
+        lines.push({
+          employee_id: l.employee_id,
+          employee_name: l.employee_name,
+          employee_code: codeOf.get(l.employee_id) ?? null,
+          center_id: CENTER_B6,
+          center_code: l.center_code ?? 'B6',
+          work_date: l.work_date,
+          category: reportCategoryFor(l.line_kind, l.payment_type_code),
+          units: l.units,
+          amount: l.calculated_amount,
+          is_adjustment: false,
+          counts_headcount: l.line_kind !== 'TRANSPORT',
+        });
+      }
+    }
+    for (const l of this.approvedStopLines()) {
+      if (l.calculated_amount == null) continue;
+      const base: ReportSourceLine = {
+        employee_id: l.employee_id,
+        employee_name: l.employee_name,
+        employee_code: codeOf.get(l.employee_id) ?? null,
+        center_id: l.center_id,
+        center_code: l.center_code,
+        work_date: l.work_date,
+        category: 'STOPOVI',
+        units: l.stop_count,
+        amount: l.calculated_amount,
+        is_adjustment: false,
+        counts_headcount: l.stop_count > 0,
+      };
+      lines.push(base);
+      for (const c of this.stopCorrections) {
+        if (c.snapshot_line_id !== l.snapshot_line_id || c.status !== 'FINANCE_APPROVED') continue;
+        lines.push({
+          ...base,
+          units: c.delta_stop_count,
+          amount: Math.round(c.delta_stop_count * (l.rate_used ?? 0) * 100) / 100,
+          is_adjustment: true,
+          counts_headcount: false,
+        });
+      }
+    }
+    return buildPayoutReport({ from, to, centerIds, lines });
   }
 
   async baEmployeeDetail(): Promise<unknown> {

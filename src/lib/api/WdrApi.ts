@@ -1,6 +1,19 @@
 import type { OvertimeComponentInput, OvertimeComponentResult } from './types';
 import type {
   AdminAttendanceStatus,
+  AdminPayoutReport,
+  CorrectionBatchDetail,
+  CorrectionBatchHeader,
+  CutoverReadiness,
+  NightWorkDeclaration,
+  PayoutContext,
+  PayoutDuplicateMatch,
+  PayoutEmployeeSearchResult,
+  PayoutDetail,
+  PayoutListItem,
+  PayoutRequestType,
+  PayoutStatus,
+  EntryEligibility,
   AdminReadiness,
   VerificationKind,
   ControlFindingDetail,
@@ -85,6 +98,11 @@ export interface WdrApi {
 
   // --- daily entry ---------------------------------------------------------
   getGrid(submissionId: Uuid): Promise<GridPayload>;
+  /**
+   * Dozvoljeni dani po zaposlenom (radni odnos + raspodela NA DATUM) i osnovni
+   * tip naknade tog dana. Čisto čitanje; server i dalje odbija zaključan dan.
+   */
+  getEntryEligibility(submissionId: Uuid): Promise<EntryEligibility>;
   bulkUpsert(
     submissionId: Uuid,
     entries: BulkEntryInput[],
@@ -174,7 +192,7 @@ export interface WdrApi {
     centerIds?: Uuid[],
     from?: IsoDate | null,
     to?: IsoDate | null,
-    types?: Array<'PERIOD' | 'ADJUSTMENT' | 'COURIER_STOPS' | 'COURIER_STOP_ADJUSTMENT'> | null,
+    types?: Array<'PERIOD' | 'ADJUSTMENT' | 'COURIER_STOPS' | 'COURIER_STOP_ADJUSTMENT' | 'PAYOUT' | 'PAYOUT_CORRECTION'> | null,
   ): Promise<FinanceHistory>;
 
   // --- dodatni zahtevi (Doplata / Umanjenje) -------------------------------
@@ -338,6 +356,71 @@ export interface WdrApi {
   baFinanceTimeline(
     from: IsoDate, to: IsoDate, centerIds?: Uuid[] | null,
   ): Promise<BaFinanceTimeline>;
+
+  /**
+   * Admin izveštaj isplata: po zaposlenom, broj ljudi po danu i centru i lista
+   * višestrukih kategorija istog dana. Samo odobreni snapshot-i (D-B1).
+   */
+  adminPayoutReport(
+    from: IsoDate, to: IsoDate, centerIds?: Uuid[] | null,
+  ): Promise<AdminPayoutReport>;
+
+  // --- dodatne isplate (0063) ----------------------------------------------
+  /** Vrste, centri sa pravom pisanja i cutover datum. */
+  payoutContext(): Promise<PayoutContext>;
+  payoutList(filter?: {
+    centerId?: Uuid | null; requestType?: PayoutRequestType | null; statuses?: PayoutStatus[] | null;
+  }): Promise<PayoutListItem[]>;
+  payoutGet(requestId: Uuid): Promise<PayoutDetail>;
+  /** Otvara postojeći ili kreira nov ORIGINALNI zahtev (centar × vrsta × period ≤ 7 dana). */
+  payoutOpen(requestType: PayoutRequestType, centerId: Uuid, from: IsoDate, to: IsoDate): Promise<PayoutDetail>;
+  /** Korekcija ODOBRENOG zahteva — nov zahtev sa vezom na original (K8). */
+  payoutOpenCorrection(originalRequestId: Uuid, reason: string): Promise<PayoutDetail>;
+  payoutSetEmployees(requestId: Uuid, add?: Uuid[] | null, remove?: Uuid[] | null): Promise<PayoutDetail>;
+  /**
+   * Postavlja ili briše stavku. Bez količine i bez vremena = brisanje (prazan dan
+   * = 0). Za interval količinu izvodi SERVER iz vremena; iznos se nikad ne šalje.
+   */
+  payoutSetLine(input: {
+    request_id: Uuid; employee_id: Uuid; work_date: IsoDate;
+    units?: number | null; time_from?: string | null; time_to?: string | null; note?: string | null;
+  }): Promise<PayoutDetail>;
+  /** Kopira ISKLJUČIVO spisak zaposlenih iz prethodnog zahteva iste vrste (K12). */
+  payoutCopyPrevious(requestId: Uuid): Promise<PayoutDetail>;
+  payoutSubmit(requestId: Uuid): Promise<PayoutDetail>;
+  payoutFinanceQueue(statuses?: PayoutStatus[] | null): Promise<PayoutListItem[]>;
+  payoutFinanceApprove(requestId: Uuid, comment?: string | null): Promise<PayoutDetail>;
+  payoutFinanceReturn(requestId: Uuid, comment: string): Promise<PayoutDetail>;
+  setNightWorkDeclaration(input: {
+    employee_id: Uuid; center_id: Uuid; declared: boolean; from: IsoDate; notes?: string | null;
+  }): Promise<unknown>;
+  nightWorkDeclarations(centerId: Uuid, on?: IsoDate | null): Promise<NightWorkDeclaration[]>;
+  /**
+   * K13: pretraga CELE baze zaposlenih (ime, prezime, deo imena, fuzzy, bez
+   * dijakritika) radi dodavanja u dodatni zahtev ili Stopove. Vraća samo
+   * identifikaciona polja; ne daje pravo na profil ni izmenu zaposlenog.
+   */
+  payoutEmployeeSearch(query: string, opts?: {
+    from?: IsoDate | null; to?: IsoDate | null; limit?: number; offset?: number;
+  }): Promise<PayoutEmployeeSearchResult>;
+  /** Provera duplikata nad CELOM bazom pre kreiranja novog zaposlenog iz dodatnog zahteva. */
+  payoutEmployeeDuplicateCheck(
+    firstName: string, lastName: string, employeeCode?: string | null,
+  ): Promise<{ matches: PayoutDuplicateMatch[]; note: string }>;
+  adminPayoutCutoverReadiness(date: IsoDate): Promise<CutoverReadiness>;
+  adminActivatePayoutCutover(date: IsoDate, confirmation: string): Promise<CutoverReadiness>;
+
+  // --- K8: korekcija odobrene prijave (0064) -------------------------------
+  correctionBatchOpen(originalSubmissionId: Uuid, reason: string): Promise<CorrectionBatchDetail>;
+  correctionBatchAttach(batchId: Uuid, adjustmentId: Uuid): Promise<CorrectionBatchDetail>;
+  correctionBatchDetach(batchId: Uuid, adjustmentId: Uuid): Promise<CorrectionBatchDetail>;
+  correctionBatchGet(batchId: Uuid): Promise<CorrectionBatchDetail>;
+  correctionBatchList(statuses?: string[] | null): Promise<CorrectionBatchHeader[]>;
+  correctionBatchSubmit(batchId: Uuid): Promise<CorrectionBatchDetail>;
+  correctionBatchApprove(
+    batchId: Uuid, comment?: string | null, acknowledgeNoWorkEntry?: boolean,
+  ): Promise<CorrectionBatchDetail>;
+  correctionBatchReturn(batchId: Uuid, comment: string): Promise<CorrectionBatchDetail>;
 
   // --- kontrolni centar ----------------------------------------------------
   /** Explicit, user-triggered scan. Never runs automatically on render. */

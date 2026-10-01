@@ -12,6 +12,8 @@ import {
   totalForDisplay,
   transportByProvider,
 } from '../features/finance/recap';
+import { fromCalcLines, summarizeByEmployee } from '../features/finance/employeeSummary';
+import { EmployeeSummaryTables } from '../components/EmployeeSummaryTables';
 import { WdrApiError } from '../lib/api';
 import type { FinanceSubmissionDetail } from '../lib/api/types';
 import { useAuth } from '../lib/auth/AuthProvider';
@@ -285,38 +287,55 @@ export function FinanceSubmission() {
         )}
       </section>
 
-      {/* ============================================== Po employee-danu ==== */}
+      {/* ================================================ Po zaposlenom ==== */}
+      {/*
+        Redizajn §21: primarni pogled Finansija je ZBIR po zaposlenom za ceo
+        period, grupisan po vrsti naknade. Dnevni detalji ostaju ispod kao
+        drill-down / audit, ne kao osnova odobrenja.
+      */}
       <section className="control-section">
-        <h2>Po zaposlenom i danu</h2>
+        <h2>Po zaposlenom — ukupno za period</h2>
+        <p className="muted small">
+          {s.center_code} · {s.period_label} · zaposleni koji je deo perioda Karnet, a deo
+          Obuka, prikazan je u obe grupe.
+        </p>
+        <EmployeeSummaryTables
+          groups={summarizeByEmployee(fromCalcLines(data.lines))}
+          periodLabel={`${s.period_start} – ${s.period_end}`}
+        />
+
+        <details className="lines-details">
+          <summary>Po zaposlenom i danu ({data.employee_days.length}) — drill-down</summary>
         <table className="list list-compact">
-          <thead>
-            <tr>
-              <th>Zaposleni</th>
-              <th>Datum</th>
-              <th>Stanje</th>
-              <th className="num">Sati</th>
-              <th className="num">Iznos dana</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.employee_days.map((d) => (
-              <tr
-                key={`${d.employee_id}-${d.work_date}`}
-                className={d.blocking_line_count > 0 ? 'row-error' : ''}
-              >
-                <td>{d.employee_name}</td>
-                <td>{d.work_date}</td>
-                <td>{d.attendance_status}</td>
-                <td className="num">{d.worked_hours ?? '—'}</td>
-                <td className="num">
-                  {d.day_amount === null
-                    ? <span className="totals-warning">nepotpuno</span>
-                    : formatRsd(d.day_amount)}
-                </td>
+            <thead>
+              <tr>
+                <th>Zaposleni</th>
+                <th>Datum</th>
+                <th>Stanje</th>
+                <th className="num">Sati</th>
+                <th className="num">Iznos dana</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {data.employee_days.map((d) => (
+                <tr
+                  key={`${d.employee_id}-${d.work_date}`}
+                  className={d.blocking_line_count > 0 ? 'row-error' : ''}
+                >
+                  <td>{d.employee_name}</td>
+                  <td>{d.work_date}</td>
+                  <td>{d.attendance_status}</td>
+                  <td className="num">{d.worked_hours ?? '—'}</td>
+                  <td className="num">
+                    {d.day_amount === null
+                      ? <span className="totals-warning">nepotpuno</span>
+                      : formatRsd(d.day_amount)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </details>
 
         <details className="lines-details">
           <summary>Sve stavke obračuna ({data.lines.length}) — stopa × jedinice = iznos</summary>

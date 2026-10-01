@@ -11,6 +11,12 @@ import type { SubmissionListItem } from '../lib/api/types';
 import { useAuth } from '../lib/auth/AuthProvider';
 import { AssistanceDialog } from '../components/AssistanceDialog';
 import { OvertimeDialog } from '../components/OvertimeDialog';
+import { EntryBar } from '../components/EntryBar';
+import {
+  employeeTotals,
+  fromPreviewLines,
+  type EmployeeTotal,
+} from '../features/finance/employeeSummary';
 
 export function DailyEntry() {
   const { api, session } = useAuth();
@@ -47,6 +53,124 @@ export function DailyEntry() {
 
   const submissionId = params.get('prijava');
   const grid = useGrid(api, submissionId);
+
+  // --- K1: centar + period otvaraju (ili kreiraju) JEDNU prijavu -------------
+  const writableCenters = useMemo(
+    () => (session?.centers ?? []).filter((c) => c.can_write),
+    [session],
+  );
+  const [opening, setOpening] = useState(false);
+  const [openError, setOpenError] = useState<string | null>(null);
+  const [copyInfo, setCopyInfo] = useState<string | null>(null);
+
+  const current: SubmissionListItem | null = useMemo(() => {
+    const fromList = submissions?.find((x) => x.id === submissionId) ?? null;
+    if (fromList) return fromList;
+    const p = grid.payload?.submission;
+    return p ? {
+      id: p.id, center_id: p.center_id, center_code: p.center_code, period_id: p.period_id,
+      period_label: `${p.period_start} – ${p.period_end}`, period_start: p.period_start, period_end: p.period_end,
+      status: p.status,
+    } : null;
+  }, [submissions, submissionId, grid.payload]);
+
+  async function openPeriod(centerId: string, from: string, to: string) {
+    setOpening(true);
+    setOpenError(null);
+    setCopyInfo(null);
+    try {
+      const res = await api.createPeriodSubmission(centerId, from, to);
+      const item: SubmissionListItem = {
+        id: res.submission_id, center_id: res.center_id, center_code: res.center_code,
+        period_id: res.period_id, period_label: res.period_label,
+        period_start: res.period_start, period_end: res.period_end, status: res.status,
+      };
+      setSubmissions((list) => (list?.some((x) => x.id === item.id) ? list : [item, ...(list ?? [])]));
+      setParams({ prijava: res.submission_id });
+    } catch (err) {
+      const code = err instanceof WdrApiError ? err.code : null;
+      setOpenError(messageForCode(code, err instanceof Error ? err.message : undefined));
+    } finally {
+      setOpening(false);
+    }
+  }
+
+  /*
+   * K12: „Kopiraj prethodnu nedelju" u osnovnom Unosu NE kopira sate, statuse,
+   * „ne radi", iznose ni komponente. Spisak zaposlenih ovde dolazi iz raspodele
+   * po datumu (izvor istine), pa funkcija samo upoređuje spisak sa prethodnom
+   * nedeljom i jasno kaže ko više nije raspoređen — nikoga ne uklanja.
+   */
+  async function comparePreviousWeek() {
+    if (!current || !submissions) return;
+    const prev = submissions
+      .filter((x) => x.center_id === current.center_id && x.period_end < current.period_start)
+      .sort((a, b) => b.period_end.localeCompare(a.period_end))[0];
+    if (!prev) {
+      setCopyInfo('Nema prethodne prijave za ovaj centar.');
+      return;
+    }
+    try {
+      const [prevGrid, curGrid] = await Promise.all([api.getGrid(prev.id), api.getGrid(current.id)]);
+      const now = new Set(curGrid.employees.map((e) => e.employee_id));
+      const kept = prevGrid.employees.filter((e) => now.has(e.employee_id));
+      const gone = prevGrid.employees.filter((e) => !now.has(e.employee_id));
+      const added = curGrid.employees.filter((e) => !prevGrid.employees.some((p) => p.employee_id === e.employee_id));
+      setCopyInfo(
+        `Prethodna nedelja (${prev.period_label}): ${prevGrid.employees.length} zaposlenih. `
+        + `Na listi i sada: ${kept.length}. `
+        + (gone.length > 0
+          ? `Više nisu raspoređeni ovde (unos nije moguć): ${gone.map((e) => e.full_name).join(', ')}. `
+          : '')
+        + (added.length > 0 ? `Novi ove nedelje: ${added.map((e) => e.full_name).join(', ')}. ` : '')
+        + 'Sati, statusi i iznosi se ne kopiraju.',
+      );
+    } catch (err) {
+      setCopyInfo(messageForCode(null, err instanceof Error ? err.message : undefined));
+    }
+  }
+
+  const entryBar = writableCenters.length > 0 ? (
+    <EntryBar
+      centers={writableCenters}
+      current={current}
+      baseType={grid.baseType}
+      counts={grid.sectionCounts}
+      busy={opening}
+      error={openError}
+      onOpen={(c, f, t) => void openPeriod(c, f, t)}
+      onBaseType={grid.setBaseType}
+      onCopyPreviousWeek={() => void comparePreviousWeek()}
+    />
+  ) : null;
+
+  /*
+   * Ukupan iznos po zaposlenom za period (redizajn §6). Iznos računa SERVER
+   * (pregled pre slanja); ovde se samo sabiraju njegove linije po zaposlenom.
+   * Osvežava se sa zakašnjenjem posle izmena, da unos ne čeka na obračun.
+   */
+  const [totals, setTotals] = useState<Map<string, EmployeeTotal> | null>(null);
+  const cellsVersion = grid.payload?.cells;
+  useEffect(() => {
+    if (!submissionId || !grid.payload) return;
+    let alive = true;
+    const t = setTimeout(() => {
+      api
+        .getSubmissionPreview(submissionId)
+        .then((p) => {
+          if (alive) setTotals(employeeTotals(fromPreviewLines(p.lines)));
+        })
+        .catch(() => {
+          if (alive) setTotals(new Map());
+        });
+    }, 700);
+    return () => {
+      alive = false;
+      clearTimeout(t);
+    };
+    // grid.payload se namerno ne navodi celo: bitne su promene ćelija.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [api, submissionId, cellsVersion]);
   const rows = grid.payload?.employees.length ?? 0;
   const cols = grid.payload?.dates.length ?? 0;
 
@@ -145,12 +269,17 @@ export function DailyEntry() {
 
   if (listError) return <Banner kind="error">{listError}</Banner>;
   if (!submissions) return <Spinner label="Učitavanje perioda…" />;
-  if (submissions.length === 0) {
+  if (!submissionId) {
     return (
-      <EmptyState
-        title="Nema otvorenog perioda"
-        hint="Administrator još nije otvorio period za vaš centar."
-      />
+      <div className="entry-page">
+        {entryBar}
+        <EmptyState
+          title="Izaberite centar i period"
+          hint={writableCenters.length > 0
+            ? 'Prijava za izabrani centar i period se otvara automatski (najviše 7 dana).'
+            : 'Nemate pravo unosa ni za jedan centar.'}
+        />
+      </div>
     );
   }
 
@@ -171,6 +300,14 @@ export function DailyEntry() {
 
   return (
     <div className="entry-page">
+      {entryBar}
+      {copyInfo && <Banner kind="info">{copyInfo}</Banner>}
+      {grid.payload.employees.length === 0 && grid.eligibility.available && (
+        <Banner kind="info">
+          U ovoj sekciji nema zaposlenih za izabrani period. Proverite drugu sekciju
+          (Karnet / Obuka).
+        </Banner>
+      )}
       <GridToolbar
         payload={grid.payload}
         submissions={submissions}
@@ -231,6 +368,18 @@ export function DailyEntry() {
         expectedMode={grid.expectedMode}
         onSelect={grid.setSelection}
         onKeyDown={onKeyDown}
+        eligibility={grid.eligibility}
+        editable={grid.editable}
+        notWorkingState={grid.notWorkingState}
+        onToggleNotWorking={(employeeId) =>
+          grid.toggleNotWorkingWholePeriod(employeeId, (days) =>
+            window.confirm(
+              `${days} dan(a) već ima unet drugi status. Da li ih označiti kao „Ne radi“?`,
+            ),
+          )
+        }
+        totals={totals}
+        baseType={grid.baseType}
       />
 
       <div className="entry-footer">
@@ -238,7 +387,10 @@ export function DailyEntry() {
         <KeyboardHelp />
         <p className="muted small">
           Prazna ćelija znači „nije pregledano" — nema zapisa u bazi i nema troška.
-          Vikend i neradni dani se ne moraju popunjavati.
+          Vikend i neradni dani se ne moraju popunjavati. Prugasta ćelija (×) je
+          zaključana: zaposleni tog dana nije u radnom odnosu ili nije raspoređen
+          u ovaj centar. „Ukupno" je iznos naknada bez prevoza, prema serverskom
+          obračunu.
         </p>
       </div>
 

@@ -3,6 +3,12 @@ import { Layout } from './components/Layout';
 import { AuthProvider } from './lib/auth/AuthProvider';
 import { DailyEntry } from './routes/DailyEntry';
 import { Admin } from './routes/Admin';
+import { AdminReports } from './routes/AdminReports';
+import { AdminPayouts } from './routes/AdminPayouts';
+import { Payouts } from './routes/Payouts';
+import { PayoutRequest } from './routes/PayoutRequest';
+import { FinancePayouts } from './routes/FinancePayouts';
+import { CorrectionBatches } from './routes/CorrectionBatches';
 import { Analytics } from './routes/Analytics';
 import { ControlCenter } from './routes/ControlCenter';
 import { CourierStops } from './routes/CourierStops';
@@ -19,7 +25,6 @@ import { Home } from './routes/Home';
 import { Login } from './routes/Login';
 import { ChangePassword } from './routes/ChangePassword';
 import { MySubmissions } from './routes/MySubmissions';
-import { NewPeriod } from './routes/NewPeriod';
 import { Notifications } from './routes/Notifications';
 import { Preview } from './routes/Preview';
 import { RequireAuth } from './routes/RequireAuth';
@@ -53,14 +58,7 @@ export default function App() {
               </RequireAuth>
             }
           />
-          <Route
-            path="/unos/novi"
-            element={
-              <RequireAuth permission="entry.view">
-                <NewPeriod />
-              </RequireAuth>
-            }
-          />
+          <Route path="/unos/novi" element={<Navigate to="/unos" replace />} />
           <Route
             path="/unos/pregled"
             element={
@@ -138,6 +136,20 @@ export default function App() {
             element={
               <RequireAuth permission="centers.manage">
                 <Admin />
+              </RequireAuth>
+            }
+          />
+          <Route path="/dodatne-isplate" element={<RequireAuth permission="payout.create"><Payouts /></RequireAuth>} />
+          <Route path="/dodatne-isplate/:id" element={<RequireAuth permission="payout.create"><PayoutRequest /></RequireAuth>} />
+          <Route path="/finansije/dodatne-isplate" element={<RequireAuth permission="payout.approve"><FinancePayouts /></RequireAuth>} />
+          <Route path="/korekcije" element={<RequireAuth permission="adjustment.create"><CorrectionBatches mode="operator" /></RequireAuth>} />
+          <Route path="/finansije/korekcije" element={<RequireAuth permission="adjustment.approve"><CorrectionBatches mode="finance" /></RequireAuth>} />
+          <Route path="/administracija/dodatne-isplate" element={<RequireAuth permission="payout.cutover.manage"><AdminPayouts /></RequireAuth>} />
+          <Route
+            path="/administracija/izvestaji"
+            element={
+              <RequireAuth permission="analytics.ba.view">
+                <AdminReports />
               </RequireAuth>
             }
           />

@@ -6,7 +6,7 @@ import { WdrApiError } from '../lib/api';
 import { useAuth } from '../lib/auth/AuthProvider';
 
 interface HistoryItem {
-  transaction_type: 'PERIOD' | 'ADJUSTMENT' | 'COURIER_STOPS' | 'COURIER_STOP_ADJUSTMENT';
+  transaction_type: 'PERIOD' | 'ADJUSTMENT' | 'COURIER_STOPS' | 'COURIER_STOP_ADJUSTMENT' | 'PAYOUT' | 'PAYOUT_CORRECTION';
   transaction_type_label: string;
   source_type: string;
   snapshot_id: string;
@@ -27,6 +27,8 @@ const TABS: Array<{ label: string; types: string[] | null }> = [
   { label: 'Stopovi kurira', types: ['COURIER_STOPS'] },
   { label: 'Korekcije stopova', types: ['COURIER_STOP_ADJUSTMENT'] },
   { label: 'Dodatni zahtevi', types: ['ADJUSTMENT'] },
+  { label: 'Dodatne isplate', types: ['PAYOUT'] },
+  { label: 'Korekcije dodatnih isplata', types: ['PAYOUT_CORRECTION'] },
 ];
 
 /**
@@ -49,7 +51,7 @@ export function FinanceHistory() {
       const res = await api.getFinanceHistory(
         undefined, undefined, undefined,
         TABS[tab].types as Array<
-        'PERIOD' | 'ADJUSTMENT' | 'COURIER_STOPS' | 'COURIER_STOP_ADJUSTMENT'> | null,
+        'PERIOD' | 'ADJUSTMENT' | 'COURIER_STOPS' | 'COURIER_STOP_ADJUSTMENT' | 'PAYOUT' | 'PAYOUT_CORRECTION'> | null,
       );
       setItems(res.items as unknown as HistoryItem[]);
     } catch (err) {
@@ -98,7 +100,8 @@ export function FinanceHistory() {
                 <td>
                   <span className={
                     h.transaction_type === 'COURIER_STOPS' ? 'chip chip-transport'
-                      : h.transaction_type === 'COURIER_STOP_ADJUSTMENT' ? 'chip chip-warn'
+                      : h.transaction_type === 'COURIER_STOP_ADJUSTMENT'
+                        || h.transaction_type === 'PAYOUT_CORRECTION' ? 'chip chip-warn'
                         : 'chip'}>
                     {h.transaction_type_label}
                   </span>

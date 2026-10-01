@@ -773,9 +773,9 @@ export interface FinanceHistoryItem {
    * COURIER_STOPS = odobreni stopovi kurira (migracija 0042). Jedna istorija za
    * sve izvore; `transaction_type` je jedini kriterijum razdvajanja.
    */
-  transaction_type: 'PERIOD' | 'ADJUSTMENT' | 'COURIER_STOPS' | 'COURIER_STOP_ADJUSTMENT';
+  transaction_type: 'PERIOD' | 'ADJUSTMENT' | 'COURIER_STOPS' | 'COURIER_STOP_ADJUSTMENT' | 'PAYOUT' | 'PAYOUT_CORRECTION';
   transaction_type_label: string;
-  source_type?: 'REGULAR_WDR' | 'ADJUSTMENT' | 'COURIER_STOPS' | 'COURIER_STOP_ADJUSTMENT';
+  source_type?: 'REGULAR_WDR' | 'ADJUSTMENT' | 'COURIER_STOPS' | 'COURIER_STOP_ADJUSTMENT' | 'PAYOUT' | 'PAYOUT_CORRECTION';
   /** Samo za COURIER_STOPS. */
   total_stops?: number | null;
   approval_id: Uuid;
@@ -985,7 +985,8 @@ export type PaymentBehaviorKey =
   | 'SATURDAY_WORK'
   | 'ASSISTANCE'
   | 'ADDITIONAL_ALLOWANCE'
-  | 'GENERIC_COMPONENT';
+  | 'GENERIC_COMPONENT'
+  | 'NIGHT_WORK';
 
 export interface BehaviorCatalogItem {
   behavior_key: string;
@@ -1192,6 +1193,8 @@ export interface EmployeeDuplicateCheck {
     similarity: number;
   }>;
   note: string;
+  /** Broj poklapanja u centrima van opsega korisnika (identitet se ne otkriva, D-E5/K10). */
+  outside_scope_match_count?: number;
 }
 
 export interface EmployeeListItem {
@@ -1694,4 +1697,307 @@ export interface AdminReadiness {
     approved_snapshots: number;
     adjustments_waiting: number;
   };
+}
+
+// ---------------------------------------------------------------------------
+// api.rpc_get_entry_eligibility (0059) — dozvoljeni dani unosa po zaposlenom
+// ---------------------------------------------------------------------------
+
+export type EligibilityLockReason = 'NOT_EMPLOYED' | 'NO_ASSIGNMENT' | 'OTHER_CENTER';
+
+export interface EligibilityDay {
+  employee_id: Uuid;
+  work_date: IsoDate;
+  eligible: boolean;
+  lock_reason: EligibilityLockReason | null;
+  /** Osnovni tip naknade iz raspodele NA TAJ DAN (null kada je dan zaključan). */
+  payment_type_code: string | null;
+}
+
+export interface EntryEligibility {
+  submission_id: Uuid;
+  center_id: Uuid;
+  period_start: IsoDate;
+  period_end: IsoDate;
+  basis: 'EMPLOYMENT_AND_ASSIGNMENT_ON_DATE';
+  days: EligibilityDay[];
+}
+
+// ---------------------------------------------------------------------------
+// api.rpc_admin_payout_report (0059) — samo odobreni snapshot-i, po datumu rada
+// ---------------------------------------------------------------------------
+
+export type PayoutReportUnit = 'DAY' | 'HOUR' | 'EVENT' | 'STOP' | 'UNIT';
+
+export interface PayoutReportCategory {
+  key: string;
+  label: string;
+  unit: PayoutReportUnit;
+  /** GO/BO: samo broj ljudi po danu (plaćeni dani bez rada), bez iznosa (0065). */
+  headcount_only?: boolean;
+}
+
+export interface PayoutReportCell {
+  units: number;
+  amount: number;
+}
+
+export interface PayoutReportEmployeeRow {
+  employee_id: Uuid;
+  employee_code: string | null;
+  employee_name: string;
+  center_id: Uuid;
+  center_code: string;
+  categories: Record<string, PayoutReportCell>;
+  adjustment_amount: number;
+  transport_amount: number;
+  payout_total: number;
+}
+
+export interface PayoutReportDayRow {
+  work_date: IsoDate;
+  center_id: Uuid;
+  center_code: string;
+  counts: Record<string, number>;
+  multi_category_employees: number;
+}
+
+export interface PayoutReportMultiRow {
+  work_date: IsoDate;
+  employee_id: Uuid;
+  employee_code: string | null;
+  employee_name: string;
+  center_codes: string[];
+  categories: string[];
+}
+
+export interface AdminPayoutReport {
+  basis: 'APPROVED_SNAPSHOTS_BY_WORK_DATE';
+  period: { from: IsoDate; to: IsoDate };
+  center_ids: Uuid[] | null;
+  categories: PayoutReportCategory[];
+  by_employee: PayoutReportEmployeeRow[];
+  by_day: PayoutReportDayRow[];
+  multi_category: PayoutReportMultiRow[];
+  totals: {
+    employees: number;
+    payout_total: number;
+    transport_amount: number;
+    adjustment_amount: number;
+  };
+  notes: string[];
+}
+
+// ---------------------------------------------------------------------------
+// Dodatne isplate (0062/0063)
+// ---------------------------------------------------------------------------
+
+export type PayoutRequestType = 'DNEVNICA' | 'ISPOMOC' | 'RADNA_SUBOTA' | 'PREKOVREMENI' | 'NOCNI_RAD';
+export type PayoutInputMode = 'DAYS' | 'HOURS' | 'TIME_RANGE';
+export type PayoutStatus = 'DRAFT' | 'SUBMITTED' | 'RETURNED' | 'FINANCE_APPROVED';
+
+export interface PayoutTypeInfo {
+  code: PayoutRequestType;
+  name: string;
+  unit_model: 'DAY' | 'HOUR';
+  input_mode: PayoutInputMode;
+  saturday_only: boolean;
+  suggest_night_declared: boolean;
+  payment_type_code: string;
+}
+
+export interface PayoutContext {
+  cutover_date: IsoDate | null;
+  active: boolean;
+  types: PayoutTypeInfo[];
+  centers: Array<{ id: Uuid; code: string; name: string }>;
+  max_period_days: number;
+}
+
+export interface PayoutListItem {
+  id: Uuid;
+  request_type: PayoutRequestType;
+  request_type_name: string;
+  center_id: Uuid;
+  center_code: string;
+  period_start: IsoDate;
+  period_end: IsoDate;
+  status: PayoutStatus;
+  is_correction: boolean;
+  corrects_request_id: Uuid | null;
+  submitted_at: string | null;
+  approved_at: string | null;
+  employees: number;
+  lines: number;
+  /** null = bar jedna stavka nema upotrebljivo pravilo. */
+  total_amount: number | null;
+}
+
+export interface PayoutLine {
+  id: number;
+  employee_id: Uuid;
+  work_date: IsoDate;
+  units: number;
+  time_from: string | null;
+  time_to: string | null;
+  crosses_midnight: boolean;
+  note: string | null;
+  rule_id: Uuid | null;
+  rule_version: number | null;
+  unit_type: string | null;
+  rate: number | null;
+  amount: number | null;
+  problem: string | null;
+  attendance_status: string | null;
+  unusual: boolean;
+}
+
+export interface PayoutEmployee {
+  employee_id: Uuid;
+  full_name: string;
+  employee_code: string | null;
+  source: 'MANUAL' | 'COPY_PREVIOUS' | 'NIGHT_DECLARATION';
+  employed_dates: IsoDate[];
+}
+
+export interface PayoutSummaryRow {
+  employee_id: Uuid;
+  full_name: string;
+  employee_code: string | null;
+  days: number;
+  units: number;
+  amount: number | null;
+  problems: number;
+}
+
+export interface PayoutDetail {
+  request: {
+    id: Uuid;
+    request_type: PayoutRequestType;
+    request_type_name: string;
+    unit_model: 'DAY' | 'HOUR';
+    input_mode: PayoutInputMode;
+    saturday_only: boolean;
+    center_id: Uuid;
+    center_code: string;
+    center_name: string;
+    period_start: IsoDate;
+    period_end: IsoDate;
+    status: PayoutStatus;
+    is_correction: boolean;
+    corrects_request_id: Uuid | null;
+    correction_reason: string | null;
+    corrects: { id: Uuid; period_start: IsoDate; period_end: IsoDate; status: PayoutStatus; approved_at: string | null } | null;
+    submitted_at: string | null;
+    submitted_by: string | null;
+    returned_at: string | null;
+    return_reason: string | null;
+    approved_at: string | null;
+    approved_by: string | null;
+    created_at: string;
+    created_by: string | null;
+  };
+  dates: IsoDate[];
+  employees: PayoutEmployee[];
+  lines: PayoutLine[];
+  summary: PayoutSummaryRow[];
+  totals: {
+    lines: number; employees: number; units: number; amount: number | null;
+    problems: number; unusual: number;
+  };
+  can_edit: boolean;
+  can_approve: boolean;
+  cutover_date: IsoDate | null;
+  created?: boolean;
+  copy?: { source_request_id: Uuid | null; added: number; skipped: number };
+}
+
+export interface NightWorkDeclaration {
+  id: Uuid;
+  employee_id: Uuid;
+  full_name: string;
+  employee_code: string | null;
+  valid_from: IsoDate;
+  valid_to: IsoDate | null;
+  active: boolean;
+}
+
+export interface CutoverFinding {
+  code: string;
+  message: string;
+  center_code: string | null;
+  detail: Record<string, unknown> | null;
+}
+
+export interface CutoverReadiness {
+  date: IsoDate;
+  active_cutover_date: IsoDate | null;
+  blockers: CutoverFinding[];
+  warnings: CutoverFinding[];
+  can_activate: boolean;
+  deactivates: string[];
+}
+
+// ---------------------------------------------------------------------------
+// K8 — korekcija odobrene osnovne prijave (0064)
+// ---------------------------------------------------------------------------
+
+export type CorrectionBatchStatus = 'DRAFT' | 'SUBMITTED' | 'RETURNED' | 'APPROVED';
+
+export interface CorrectionBatchHeader {
+  id: Uuid;
+  status: CorrectionBatchStatus;
+  reason: string;
+  original_submission_id: Uuid;
+  original_period_start: IsoDate;
+  original_period_end: IsoDate;
+  original_status: string;
+  center_id: Uuid;
+  center_code: string;
+  created_at: string;
+  created_by: string | null;
+  submitted_at: string | null;
+  returned_at: string | null;
+  return_reason: string | null;
+  approved_at: string | null;
+  approved_by: string | null;
+  totals?: { items: number; amount: number | null };
+}
+
+export interface CorrectionBatchDetail {
+  batch: CorrectionBatchHeader;
+  items: Adjustment[];
+  totals: { items: number; amount: number | null };
+}
+
+// ---------------------------------------------------------------------------
+// K13 — kontrolisani globalni lookup zaposlenih za Dodatne isplate (0066)
+// ---------------------------------------------------------------------------
+
+/** ISKLJUČIVO identifikaciona polja; bez zarade, obračuna, profila i naloga. */
+export interface PayoutEmployeeHit {
+  id: Uuid;
+  full_name: string;
+  employee_code: string | null;
+  center_code: string | null;
+  active: boolean;
+  /** null kada period nije zadat. */
+  employed_in_period: boolean | null;
+}
+
+export interface PayoutEmployeeSearchResult {
+  items: PayoutEmployeeHit[];
+  has_more: boolean;
+  limit: number;
+  offset: number;
+}
+
+export interface PayoutDuplicateMatch {
+  id: Uuid;
+  full_name: string;
+  employee_code: string | null;
+  center_code: string | null;
+  active: boolean;
+  match_reason: 'EXACT_CODE' | 'EXACT_NAME' | 'SIMILAR_NAME';
+  score: number;
 }

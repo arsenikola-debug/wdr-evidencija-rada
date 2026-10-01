@@ -18,6 +18,7 @@ interface StopContext {
   employees: CourierOption[];
 }
 import { CourierStopCorrections } from './CourierStopCorrections';
+import { EmployeePicker } from '../components/EmployeePicker';
 import { useAuth } from '../lib/auth/AuthProvider';
 
 /**
@@ -33,7 +34,6 @@ export function CourierStops() {
 
   const [centers, setCenters] = useState<CenterOption[]>([]);
   const [periods, setPeriods] = useState<PeriodOption[]>([]);
-  const [employees, setEmployees] = useState<CourierOption[]>([]);
   const [centerId, setCenterId] = useState('');
   const [periodId, setPeriodId] = useState('');
 
@@ -62,7 +62,6 @@ export function CourierStops() {
         const ctx = await api.courierStopContext() as StopContext;
         setCenters(ctx.centers);
         setPeriods(ctx.periods);
-        setEmployees(ctx.employees);
         if (ctx.centers.length === 1) setCenterId(ctx.centers[0].id);
       } catch (err) {
         fail(err);
@@ -221,24 +220,17 @@ export function CourierStops() {
         <>
           {editable && (
             <div className="filter-row">
-              <label><span>Dodaj kurira</span>
-                <select
-                  value=""
-                  onChange={(e) => {
-                    const emp = employees.find((x) => x.id === e.target.value);
-                    if (emp) setExtraCouriers((prev) => [...prev, emp]);
-                  }}
-                >
-                  <option value="">izaberi iz evidencije zaposlenih…</option>
-                  {employees
-                    .filter((e) => !rows.some((r) => r.employee_id === e.id))
-                    .map((e) => (
-                      <option key={e.id} value={e.id}>
-                        {e.full_name}{e.employee_code ? ` (${e.employee_code})` : ''}
-                      </option>
-                    ))}
-                </select>
-              </label>
+              {/* Redizajn §18: kurir se dodaje pretragom (isti picker kao Dodatne
+                  isplate, sa „Dodaj novog zaposlenog" i proverom duplikata). Obračun
+                  stopova se ne menja. */}
+              <EmployeePicker
+                scope="payout"
+                period={detail ? { from: detail.submission.period_start, to: detail.submission.period_end } : undefined}
+                excludeIds={rows.map((r) => r.employee_id)}
+                defaultCenterId={centerId || undefined}
+                onPick={(e) => setExtraCouriers((prev) => (prev.some((x) => x.id === e.id)
+                  ? prev : [...prev, { id: e.id, full_name: e.full_name, employee_code: e.employee_code }]))}
+              />
               <p className="muted small">
                 Ne mora svaki zaposleni centra da ima stopove — prikazuju se samo kuriri
                 koji učestvuju u ovoj evidenciji.

@@ -137,7 +137,7 @@ describe('MockWdrApi.createPeriodSubmission', () => {
     await api.createPeriodSubmission(CENTER_B6, '2026-10-01', '2026-10-07');
 
     await expect(
-      api.createPeriodSubmission(CENTER_B6, '2026-10-05', '2026-10-12'),
+      api.createPeriodSubmission(CENTER_B6, '2026-10-05', '2026-10-11'),
     ).rejects.toMatchObject({ code: 'PERIOD_OVERLAPS_EXISTING' });
   });
 
@@ -149,7 +149,7 @@ describe('MockWdrApi.createPeriodSubmission', () => {
     ).rejects.toMatchObject({ code: 'PERIOD_RANGE_INVALID' });
 
     await expect(
-      api.createPeriodSubmission(CENTER_B6, '2026-11-01', '2027-02-01'),
+      api.createPeriodSubmission(CENTER_B6, '2026-11-01', '2026-11-08'),
     ).rejects.toMatchObject({ code: 'PERIOD_RANGE_TOO_LONG' });
   });
 

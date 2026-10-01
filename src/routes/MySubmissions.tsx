@@ -87,8 +87,8 @@ export function MySubmissions() {
       </div>
       {canCreate && (
         <div className="page-head-actions">
-          <Link className="btn btn-primary" to="/unos/novi">
-            Novi unos
+          <Link className="btn btn-primary" to="/unos">
+            Unos
           </Link>
         </div>
       )}

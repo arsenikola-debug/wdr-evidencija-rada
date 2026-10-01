@@ -11,7 +11,20 @@ import {
   type CellKind,
 } from '../features/grid/model';
 import { isInSelection, singleCell, type Selection } from '../features/grid/selection';
+import type { WholePeriodState } from '../features/grid/bulk';
+import {
+  EMPTY_ELIGIBILITY,
+  lockReasonText,
+  type EligibilityIndex,
+  type UiLockReason,
+} from '../features/grid/eligibility';
+import type { EmployeeTotal } from '../features/finance/employeeSummary';
+import { formatRsd } from '../features/grid/model';
 import { SaveDot } from './Bits';
+
+function shortDate(iso: string): string {
+  return `${iso.slice(8, 10)}.${iso.slice(5, 7)}.`;
+}
 
 const KIND_CLASS: Record<CellKind, string> = {
   EMPTY: 'c-empty',
@@ -45,6 +58,12 @@ export function GridTable({
   expectedMode,
   onSelect,
   onKeyDown,
+  eligibility = EMPTY_ELIGIBILITY,
+  editable = false,
+  notWorkingState,
+  onToggleNotWorking,
+  totals,
+  baseType = null,
 }: {
   payload: GridPayload;
   index: CellIndex;
@@ -53,6 +72,15 @@ export function GridTable({
   expectedMode: ExpectedDaysMode;
   onSelect(sel: Selection): void;
   onKeyDown(e: React.KeyboardEvent): void;
+  /** Zaključani dani i osnovni tip po danu (0059). */
+  eligibility?: EligibilityIndex;
+  editable?: boolean;
+  notWorkingState?: (employeeId: string) => WholePeriodState;
+  onToggleNotWorking?: (employeeId: string) => void;
+  /** Ukupan iznos zaposlenog za period (server). undefined = kolona se ne prikazuje. */
+  totals?: Map<string, EmployeeTotal> | null;
+  /** K1: izabrana sekcija (za tekst razloga zaključavanja). */
+  baseType?: string | null;
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const focusRef = useRef<HTMLTableCellElement>(null);
@@ -106,6 +134,11 @@ export function GridTable({
                 </th>
               );
             })}
+            {totals !== undefined && (
+              <th scope="col" className="total-head" title="Ukupan iznos zaposlenog za period (bez prevoza)">
+                Ukupno
+              </th>
+            )}
           </tr>
         </thead>
         <tbody>
@@ -115,7 +148,19 @@ export function GridTable({
                 <span className="emp-name">{emp.full_name}</span>
                 <span className="emp-meta">
                   {emp.employee_code && <span className="emp-code">{emp.employee_code}</span>}
-                  <span className="emp-ptype">{emp.primary_payment_type_code ?? '—'}</span>
+                  {eligibility.typeChanges.has(emp.employee_id) ? (
+                    <span
+                      className="emp-ptype emp-ptype-change"
+                      title="Osnovni tip naknade se menja u toku perioda"
+                    >
+                      {eligibility.typeChanges
+                        .get(emp.employee_id)!
+                        .map((r, i) => (i === 0 ? r.code ?? '—' : `${r.code ?? '—'} od ${shortDate(r.from)}`))
+                        .join(' → ')}
+                    </span>
+                  ) : (
+                    <span className="emp-ptype">{emp.primary_payment_type_code ?? '—'}</span>
+                  )}
                   {emp.transport_provider_code && (
                     <span className="chip chip-transport" title="Prevoznik">
                       {emp.transport_provider_code}
@@ -127,6 +172,28 @@ export function GridTable({
                     </span>
                   )}
                 </span>
+                {notWorkingState && onToggleNotWorking && (() => {
+                  const st = notWorkingState(emp.employee_id);
+                  if (st === 'UNAVAILABLE') return null;
+                  return (
+                    <label
+                      className="nw-toggle"
+                      title="Svi dostupni dani zaposlenog postaju „Ne radi“; ponovni klik ih uklanja"
+                      onMouseDown={(ev) => ev.stopPropagation()}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={st === 'ALL'}
+                        disabled={!editable}
+                        ref={(el) => {
+                          if (el) el.indeterminate = st === 'PARTIAL';
+                        }}
+                        onChange={() => onToggleNotWorking(emp.employee_id)}
+                      />
+                      Nije radio ceo period
+                    </label>
+                  );
+                })()}
               </th>
 
               {dates.map((d, c) => {
@@ -137,6 +204,8 @@ export function GridTable({
                 const isFocus = selection.focus.r === r && selection.focus.c === c;
                 const expected = isExpectedDate(d, expectedMode);
                 const err = save === 'error' ? saveMap[key]?.errorMessage : undefined;
+                const lock = eligibility.locked.get(key);
+                const lockedEmpty = lock !== undefined && view.kind === 'EMPTY';
 
                 return (
                   <td
@@ -149,8 +218,14 @@ export function GridTable({
                       isFocus ? 'focused' : '',
                       expected ? '' : 'not-expected',
                       save === 'error' ? 'has-error' : '',
+                      lock !== undefined ? 'c-locked' : '',
                     ].join(' ')}
-                    title={err ?? KIND_TITLE[view.kind]}
+                    title={
+                      err ??
+                      (lock !== undefined
+                        ? `Zaključano: ${lockReasonText(lock as UiLockReason, baseType)}`
+                        : KIND_TITLE[view.kind])
+                    }
                     aria-selected={selected}
                     onMouseDown={(ev) => {
                       if (ev.shiftKey) onSelect({ anchor: selection.anchor, focus: { r, c } });
@@ -160,7 +235,7 @@ export function GridTable({
                       if (ev.buttons === 1) onSelect({ anchor: selection.anchor, focus: { r, c } });
                     }}
                   >
-                    <span className="cell-label">{view.label}</span>
+                    <span className="cell-label">{lockedEmpty ? '×' : view.label}</span>
                     <span className="cell-marks">
                       {view.hasForeignSegment && (
                         <span className="mark mark-foreign" title="Sadrži ispomoć drugog centra">
@@ -177,6 +252,29 @@ export function GridTable({
                   </td>
                 );
               })}
+              {totals !== undefined && (() => {
+                const t = totals?.get(emp.employee_id);
+                return (
+                  <td
+                    className="row-total num"
+                    title={
+                      t && t.blockedLines > 0
+                        ? `Iznos nije konačan: ${t.blockedLines} stavki bez pravila`
+                        : t && t.transportAmount > 0
+                          ? `Prevoz (odvojeno): ${formatRsd(t.transportAmount)}`
+                          : undefined
+                    }
+                  >
+                    {totals === null
+                      ? '…'
+                      : !t
+                        ? '—'
+                        : t.blockedLines > 0
+                          ? 'nepotpuno'
+                          : formatRsd(t.amount)}
+                  </td>
+                );
+              })()}
             </tr>
           ))}
         </tbody>

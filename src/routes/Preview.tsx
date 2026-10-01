@@ -8,6 +8,8 @@ import {
   groupMissingByEmployee,
 } from '../features/finance/previewBreakdown';
 import { formatDay } from '../features/analytics/period';
+import { fromPreviewLines, summarizeByEmployee } from '../features/finance/employeeSummary';
+import { EmployeeSummaryTables } from '../components/EmployeeSummaryTables';
 import { WdrApiError } from '../lib/api';
 import type { PreviewLine, SubmissionPreview } from '../lib/api/types';
 import { useAuth } from '../lib/auth/AuthProvider';
@@ -331,44 +333,13 @@ export function Preview() {
           </>
         )}
 
-        <details className="lines-details">
-          <summary>Sve stavke obračuna ({data.lines.length})</summary>
-          <table className="list list-compact">
-            <thead>
-              <tr>
-                <th>Zaposleni</th>
-                <th>Datum</th>
-                <th>Vrsta</th>
-                <th>Stavka</th>
-                <th>Osnova centra</th>
-                <th>Centar</th>
-                <th className="num">Stopa</th>
-                <th className="num">Količina</th>
-                <th className="num">Iznos</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.lines.map((l, i) => (
-                <tr
-                  key={`${l.work_entry_id}-${l.line_kind}-${l.payment_type_code}-${i}`}
-                  className={l.status === 'RESOLVED' ? '' : 'row-muted'}
-                >
-                  <td>{l.employee_name}</td>
-                  <td>{l.work_date}</td>
-                  <td>{LINE_KIND_LABEL[l.line_kind] ?? l.line_kind}</td>
-                  <td>{l.payment_type_code ?? '—'}</td>
-                  <td title="Zašto je izabran ovaj centar">{l.basis}</td>
-                  <td>{l.center_code ?? '—'}</td>
-                  <td className="num">{formatRsd(l.rate)}</td>
-                  <td className="num">{l.units}</td>
-                  <td className="num">{formatRsd(l.calculated_amount)}</td>
-                  <td>{STATUS_LABEL[l.status]}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </details>
+        {/*
+          Redizajn §7: specifikacija se ne prikazuje po danima nego kao ukupan
+          iznos po zaposlenom za ceo period, grupisan po vrsti naknade. Zaposleni
+          koji je deo perioda Karnet, a deo Obuka, pojavljuje se u obe grupe.
+        */}
+        <h3>Specifikacija po zaposlenom</h3>
+        <EmployeeSummaryTables groups={summarizeByEmployee(fromPreviewLines(data.lines))} />
       </section>
 
       {/* ====================================================== C. Kontrole === */}

@@ -63,12 +63,12 @@ const NAV_GROUPS: NavGroup[] = [
     title: 'Evidencija',
     items: [
       {
-        to: '/unos/novi', label: 'Novi unos',
-        permission: 'entry.edit_draft', icon: 'plus', profiles: ['operator'],
-      },
-      {
         to: '/unos', label: 'Unos', end: true, permission: 'entry.view', icon: 'grid',
         alsoActiveOn: ['/unos/pregled'], profiles: ['operator'],
+      },
+      {
+        to: '/dodatne-isplate', label: 'Dodatne isplate',
+        permission: 'payout.create', icon: 'plus', profiles: ['operator'],
       },
       {
         to: '/moje-prijave', label: 'Moji unosi',
@@ -104,6 +104,10 @@ const NAV_GROUPS: NavGroup[] = [
         permission: 'finance.queue.view', icon: 'wallet', profiles: ['finance'],
       },
       {
+        to: '/finansije/dodatne-isplate', label: 'Dodatne isplate',
+        permission: 'payout.approve', icon: 'check', profiles: ['finance'],
+      },
+      {
         to: '/finansije/istorija', label: 'Istorija obračuna',
         permission: 'finance.history.view', icon: 'history', profiles: ['finance'],
       },
@@ -115,6 +119,14 @@ const NAV_GROUPS: NavGroup[] = [
       {
         to: '/dodatni-zahtevi', label: 'Moji zahtevi',
         permission: 'adjustment.create', icon: 'plus', profiles: ['operator'],
+      },
+      {
+        to: '/korekcije', label: 'Korekcije obračuna',
+        permission: 'adjustment.create', icon: 'history', profiles: ['operator'],
+      },
+      {
+        to: '/finansije/korekcije', label: 'Odobrenje korekcija',
+        permission: 'adjustment.approve', icon: 'check', profiles: ['finance'],
       },
       {
         to: '/finansije/dodatni-zahtevi',
@@ -132,13 +144,21 @@ const NAV_GROUPS: NavGroup[] = [
         to: '/analitika', label: 'Analitika',
         permission: 'analytics.ba.view', icon: 'chart', profiles: ['admin'],
       },
+      {
+        to: '/administracija/dodatne-isplate', label: 'Cutover i tarife',
+        permission: 'payout.cutover.manage', icon: 'settings', profiles: ['admin'],
+      },
+      {
+        to: '/administracija/izvestaji', label: 'Izveštaji isplata',
+        permission: 'analytics.ba.view', icon: 'history', profiles: ['admin'],
+      },
     ],
   },
   {
     title: 'Administracija',
     items: [
       {
-        to: '/administracija', label: 'Administracija',
+        to: '/administracija', label: 'Administracija', end: true,
         permission: 'centers.manage', icon: 'settings', profiles: ['admin'],
       },
     ],

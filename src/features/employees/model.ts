@@ -49,7 +49,9 @@ export function duplicateSeverity(
 ): { kind: 'blocked' | 'warning' | 'clear' | 'unknown'; count: number } {
   if (!d) return { kind: 'unknown', count: 0 };
   if (d.exact_code) return { kind: 'blocked', count: 1 };
-  const count = d.exact_name.length + d.similar.length;
+  // K10: poklapanje u centru van opsega se broji kao upozorenje (identitet se ne
+  // otkriva), da operater ne uvede istu osobu drugi put bez provere.
+  const count = d.exact_name.length + d.similar.length + (d.outside_scope_match_count ?? 0);
   return count > 0 ? { kind: 'warning', count } : { kind: 'clear', count: 0 };
 }
 

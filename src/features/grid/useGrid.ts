@@ -12,8 +12,22 @@ import {
   clearCells,
   copyFromOffset,
   describeSkips,
+  planUndoWholePeriodNotWorking,
+  planWholePeriodNotWorking,
+  wholePeriodNotWorkingState,
   type BulkPlan,
+  type WholePeriodState,
 } from './bulk';
+import {
+  applyBaseType,
+  buildEligibilityIndex,
+  EMPTY_ELIGIBILITY,
+  employeesInSection,
+  isLocked as isLockedIn,
+  sectionCounts,
+  type BaseType,
+  type EligibilityIndex,
+} from './eligibility';
 import {
   applyResults,
   decaySaved,
@@ -56,6 +70,13 @@ export interface UseGridResult {
   expectedMode: ExpectedDaysMode;
   completion: ReturnType<typeof computeCompletion> | null;
   editable: boolean;
+  /** Dozvoljeni dani po zaposlenom (0059) + zaključavanje po sekciji tipa. */
+  eligibility: EligibilityIndex;
+  /** K1: izabrana sekcija osnovne naknade (Karnet / Obuka) u ISTOJ prijavi. */
+  baseType: BaseType;
+  setBaseType(t: BaseType): void;
+  /** Broj zaposlenih sa bar jednim dostupnim danom po sekciji. */
+  sectionCounts: Record<BaseType, number> | null;
 
   setSelection(sel: Selection): void;
   setExpectedMode(mode: ExpectedDaysMode): void;
@@ -75,6 +96,17 @@ export interface UseGridResult {
   clearSelection(): void;
   copyPreviousDay(): void;
   copyPreviousWeek(): void;
+
+  /** „Nije radio ceo period" — stanje opcije za zaposlenog. */
+  notWorkingState(employeeId: Uuid): WholePeriodState;
+  /**
+   * Uključuje/isključuje „Nije radio ceo period". `confirmOverwrite` se pita
+   * samo kada bi uključivanje prepisalo dane koji već imaju drugi status.
+   */
+  toggleNotWorkingWholePeriod(
+    employeeId: Uuid,
+    confirmOverwrite: (days: number) => boolean,
+  ): void;
 }
 
 const EMPTY_INDEX: CellIndex = new Map();
@@ -87,10 +119,27 @@ export function useGrid(api: WdrApi, submissionId: Uuid | null): UseGridResult {
   const [selection, setSelection] = useState<Selection>(singleCell(0, 0));
   const [notice, setNotice] = useState<string | null>(null);
   const [expectedMode, setExpectedMode] = useState<ExpectedDaysMode>('MON_SAT');
+  const [rawEligibility, setEligibility] = useState<EligibilityIndex>(EMPTY_ELIGIBILITY);
+  const [baseType, setBaseType] = useState<BaseType>('KARNET');
+  const eligibility = useMemo(() => applyBaseType(rawEligibility, baseType), [rawEligibility, baseType]);
   const decayTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const index = useMemo(() => (payload ? buildCellIndex(payload) : EMPTY_INDEX), [payload]);
-  const employees = payload?.employees ?? [];
+  const allEmployees = useMemo(() => payload?.employees ?? [], [payload]);
+  const counts = useMemo(
+    () => (rawEligibility.available ? sectionCounts(rawEligibility, allEmployees, payload?.dates ?? []) : null),
+    [rawEligibility, allEmployees, payload],
+  );
+  // Redovi grida = zaposleni sa bar jednim danom u izabranoj sekciji. Svi potrošači
+  // (selekcija, grupne akcije, tabela) koriste ISTI filtriran spisak.
+  const employees = useMemo(
+    () => employeesInSection(rawEligibility, allEmployees, baseType, payload?.dates ?? []),
+    [rawEligibility, allEmployees, baseType, payload],
+  );
+  const viewPayload = useMemo(
+    () => (payload ? { ...payload, employees } : null),
+    [payload, employees],
+  );
   const dates = payload?.dates ?? [];
   const editable = Boolean(payload?.submission.editable && payload?.submission.can_write);
 
@@ -101,9 +150,18 @@ export function useGrid(api: WdrApi, submissionId: Uuid | null): UseGridResult {
     }
     setLoading(true);
     setLoadError(null);
+    setEligibility(EMPTY_ELIGIBILITY);
     try {
       const p = await api.getGrid(submissionId);
       setPayload(p);
+      // Eligibility je pomoć, ne preduslov: ako ne stigne, grid radi kao ranije
+      // i baza ostaje jedina koja odbija nedozvoljen dan.
+      api
+        .getEntryEligibility(submissionId)
+        .then((e) => {
+          if (e.submission_id === submissionId) setEligibility(buildEligibilityIndex(e));
+        })
+        .catch(() => setEligibility(EMPTY_ELIGIBILITY));
       const savedExpectedMode = window.localStorage.getItem(
         `wdr:expected-mode:${submissionId}`,
       );
@@ -286,6 +344,8 @@ export function useGrid(api: WdrApi, submissionId: Uuid | null): UseGridResult {
     });
   }, []);
 
+  const isLocked = useCallback((key: string) => isLockedIn(eligibility, key), [eligibility]);
+
   const currentKeys = useCallback(
     () => selectionKeys(selection, employees, dates),
     [selection, employees, dates],
@@ -311,10 +371,11 @@ export function useGrid(api: WdrApi, submissionId: Uuid | null): UseGridResult {
           employees,
           shiftTemplateId: shiftTemplateId ?? null,
           statusAllowsSegments,
+          isLocked,
         }),
       );
     },
-    [editable, runPlan, currentKeys, index, employees, statusAllowsSegments],
+    [editable, runPlan, currentKeys, index, employees, statusAllowsSegments, isLocked],
   );
 
   const applyShiftIndexToSelection = useCallback(
@@ -344,24 +405,44 @@ export function useGrid(api: WdrApi, submissionId: Uuid | null): UseGridResult {
           offsetDays,
           periodStart: payload.submission.period_start,
           periodEnd: payload.submission.period_end,
+          isLocked,
         }),
       );
     },
-    [editable, payload, runPlan, currentKeys, index],
+    [editable, payload, runPlan, currentKeys, index, isLocked],
   );
 
   const completion = useMemo(
     () =>
       payload
-        ? computeCompletion({ dates, employees, index, mode: expectedMode })
+        ? computeCompletion({ dates, employees, index, mode: expectedMode, isLocked })
         : null,
-    [payload, dates, employees, index, expectedMode],
+    [payload, dates, employees, index, expectedMode, isLocked],
+  );
+
+  const notWorkingState = useCallback(
+    (employeeId: Uuid) => wholePeriodNotWorkingState({ employeeId, dates, index, isLocked }),
+    [dates, index, isLocked],
+  );
+
+  const toggleNotWorkingWholePeriod = useCallback(
+    (employeeId: Uuid, confirmOverwrite: (days: number) => boolean) => {
+      if (!editable) return;
+      if (notWorkingState(employeeId) === 'ALL') {
+        runPlan(planUndoWholePeriodNotWorking({ employeeId, dates, index }));
+        return;
+      }
+      const plan = planWholePeriodNotWorking({ employeeId, dates, index, isLocked });
+      if (plan.overwrites > 0 && !confirmOverwrite(plan.overwrites)) return;
+      runPlan(plan);
+    },
+    [editable, notWorkingState, runPlan, dates, index, isLocked],
   );
 
   return {
     loading,
     loadError,
-    payload,
+    payload: viewPayload,
     index,
     selection,
     saveMap,
@@ -371,6 +452,10 @@ export function useGrid(api: WdrApi, submissionId: Uuid | null): UseGridResult {
     expectedMode,
     completion,
     editable,
+    eligibility,
+    baseType,
+    setBaseType,
+    sectionCounts: counts,
 
     setSelection,
     setExpectedMode,
@@ -391,5 +476,7 @@ export function useGrid(api: WdrApi, submissionId: Uuid | null): UseGridResult {
     clearSelection,
     copyPreviousDay: () => copyOffset(1),
     copyPreviousWeek: () => copyOffset(7),
+    notWorkingState,
+    toggleNotWorkingWholePeriod,
   };
 }
