@@ -6,6 +6,11 @@ import type {
   CorrectionBatchHeader,
   CutoverReadiness,
   NightWorkDeclaration,
+  BulkAssignResult,
+  EmployeeWithoutBaseType,
+  ImportCreateInput,
+  ImportStagingList,
+  ImportStagingRow,
   PayoutContext,
   PayoutDuplicateMatch,
   PayoutEmployeeSearchResult,
@@ -407,6 +412,22 @@ export interface WdrApi {
   payoutEmployeeDuplicateCheck(
     firstName: string, lastName: string, employeeCode?: string | null,
   ): Promise<{ matches: PayoutDuplicateMatch[]; note: string }>;
+  // --- uvoz zaposlenih (0068) — samo administrator --------------------------
+  adminImportStagingList(batch?: string | null, resolutions?: string[] | null): Promise<ImportStagingList>;
+  /** Poveži red sa postojećim zaposlenim; podaci zaposlenog se NE menjaju. */
+  adminImportStagingLink(id: Uuid, employeeId: Uuid, note?: string | null): Promise<ImportStagingRow>;
+  /** Kreira zaposlenog kroz postojeći tok (stvarni datum početka i osnovna vrsta su obavezni). */
+  adminImportStagingCreate(input: ImportCreateInput): Promise<ImportStagingRow>;
+  adminImportStagingDismiss(id: Uuid, note: string): Promise<ImportStagingRow>;
+  /** 0070: zaposleni sa važećom raspodelom bez Karnet/Obuka (npr. iz uvoza). */
+  adminEmployeesWithoutBaseType(centerId?: Uuid | null): Promise<EmployeeWithoutBaseType[]>;
+  /** 0070: temporalna masovna dodela KARNET/OBUKA od valid_from; greška jednog ne poništava ostale. */
+  adminBulkAssignBaseType(employeeIds: Uuid[], code: 'KARNET' | 'OBUKA', validFrom: IsoDate): Promise<BulkAssignResult>;
+  /**
+   * 0070: Admin menja početak/kraj radnog odnosa. Sukob sa raspodelom/prevozom daje
+   * jasnu grešku; `align` izričito usklađuje početak raspodele i prevoza.
+   */
+  adminSetEmploymentDates(employeeId: Uuid, start: IsoDate, end: IsoDate | null, align?: boolean): Promise<unknown>;
   adminPayoutCutoverReadiness(date: IsoDate): Promise<CutoverReadiness>;
   adminActivatePayoutCutover(date: IsoDate, confirmation: string): Promise<CutoverReadiness>;
 

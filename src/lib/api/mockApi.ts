@@ -11,6 +11,11 @@ import type {
   CorrectionBatchHeader,
   CutoverReadiness,
   NightWorkDeclaration,
+  BulkAssignResult,
+  EmployeeWithoutBaseType,
+  ImportCreateInput,
+  ImportStagingList,
+  ImportStagingRow,
   PayoutContext,
   PayoutDuplicateMatch,
   PayoutEmployeeSearchResult,
@@ -2954,12 +2959,13 @@ export class MockWdrApi implements WdrApi {
   private static readonly PAYOUT_TYPES: PayoutTypeInfo[] = [
     { code: 'DNEVNICA', name: 'Dnevnice', unit_model: 'DAY', input_mode: 'DAYS', saturday_only: false, suggest_night_declared: false, payment_type_code: 'DODATNA_DNEVNICA' },
     { code: 'ISPOMOC', name: 'Ispomoć', unit_model: 'DAY', input_mode: 'DAYS', saturday_only: false, suggest_night_declared: false, payment_type_code: 'ISPOMOC' },
-    { code: 'RADNA_SUBOTA', name: 'Radna subota', unit_model: 'HOUR', input_mode: 'TIME_RANGE', saturday_only: true, suggest_night_declared: false, payment_type_code: 'RADNA_SUBOTA' },
+    { code: 'RADNA_SUBOTA', name: 'Radna subota', unit_model: 'DAY', input_mode: 'DAYS', saturday_only: true, suggest_night_declared: false, payment_type_code: 'RADNA_SUBOTA' },
     { code: 'PREKOVREMENI', name: 'Prekovremeni rad', unit_model: 'HOUR', input_mode: 'HOURS', saturday_only: false, suggest_night_declared: false, payment_type_code: 'PREKOVREMENI' },
-    { code: 'NOCNI_RAD', name: 'Noćni rad', unit_model: 'HOUR', input_mode: 'TIME_RANGE', saturday_only: false, suggest_night_declared: true, payment_type_code: 'NOCNI_RAD' },
+    { code: 'NOCNI_RAD', name: 'Noćni rad', unit_model: 'DAY', input_mode: 'DAYS', saturday_only: false, suggest_night_declared: true, payment_type_code: 'NOCNI_RAD' },
   ];
   private static readonly PAYOUT_DEMO_RATE: Record<PayoutRequestType, number> = {
-    DNEVNICA: 1500, ISPOMOC: 700, RADNA_SUBOTA: 600, PREKOVREMENI: 450, NOCNI_RAD: 300,
+    // Finalne početne tarife (oktobar 2026): po danu 4000/500, prekovremeni 200/h.
+    DNEVNICA: 4000, ISPOMOC: 500, RADNA_SUBOTA: 4000, PREKOVREMENI: 200, NOCNI_RAD: 4000,
   };
 
   /**
@@ -3033,6 +3039,114 @@ export class MockWdrApi implements WdrApi {
         center_code: e.center_code, active: e.active, match_reason: m.reason, score: m.score }] : [];
     });
     return { matches, note: 'Provera nad celom bazom (DEMO).' };
+  }
+
+  // --- uvoz zaposlenih (ogledalo 0068) ------------------------------------------
+  private stagingRows: ImportStagingRow[] = [
+    {
+      id: 'st-1', batch: 'ZAPOSLENI_AVGUST_2026', source_row: 1, source_full_name: 'Novaković Nina',
+      source_center_code: 'BŽ', center_code: 'BZ', center_id: null, source_transport: 'Gamzed (ZR)',
+      transport_required: true, transport_provider_id: null, transport_provider_code: 'GAMZED',
+      source_main_shift: '18-02', shift_template_id: null, source_payload: { napomena: 'DEMO' },
+      match_status: 'NEW', matched_employee_id: null, candidates: [], resolution: 'PENDING',
+      resolved_employee_id: null, resolved_at: null, resolution_note: null, resolved_by: null,
+    },
+    {
+      id: 'st-2', batch: 'ZAPOSLENI_AVGUST_2026', source_row: 2, source_full_name: 'Markovic Marko',
+      source_center_code: 'B6', center_code: 'B6', center_id: CENTER_B6, source_transport: null,
+      transport_required: false, transport_provider_id: null, transport_provider_code: null,
+      source_main_shift: '06-14', shift_template_id: null, source_payload: { napomena: 'DEMO' },
+      match_status: 'POSSIBLE', matched_employee_id: null,
+      candidates: [{ id: 'e1', full_name: 'Marković Marko', employee_code: 'E-001', center_code: 'B6', score: 1, exact: false }],
+      resolution: 'PENDING', resolved_employee_id: null, resolved_at: null, resolution_note: null, resolved_by: null,
+    },
+  ];
+
+  async adminImportStagingList(_batch?: string | null, resolutions?: string[] | null): Promise<ImportStagingList> {
+    await delay(60);
+    this.requireAdmin();
+    const items = this.stagingRows.filter((r) => !resolutions || resolutions.includes(r.resolution));
+    const summary: Record<string, number> = {};
+    for (const r of this.stagingRows) summary[`${r.match_status}:${r.resolution}`] = (summary[`${r.match_status}:${r.resolution}`] ?? 0) + 1;
+    return { items, summary };
+  }
+
+  private stagingPending(id: Uuid) {
+    this.requireAdmin();
+    const r = this.stagingRows.find((x) => x.id === id);
+    if (!r) throw new WdrApiError('Red uvoza ne postoji.', 'P0002');
+    if (r.resolution !== 'PENDING') throw new WdrApiError(`Red uvoza je već rešen (${r.resolution}).`, '23514');
+    return r;
+  }
+
+  async adminImportStagingLink(id: Uuid, employeeId: Uuid, note?: string | null): Promise<ImportStagingRow> {
+    const r = this.stagingPending(id);
+    Object.assign(r, { resolution: 'LINKED', resolved_employee_id: employeeId, resolved_at: new Date().toISOString(),
+      resolution_note: note ?? null, resolved_by: 'Admin (DEMO)' });
+    return r;
+  }
+
+  async adminImportStagingCreate(input: ImportCreateInput): Promise<ImportStagingRow> {
+    const r = this.stagingPending(input.id);
+    if (!input.employment_start_date || !input.primary_payment_type_id) {
+      throw new WdrApiError('Datum početka radnog odnosa i osnovna vrsta su obavezni — ne izmišljaju se.', '23514');
+    }
+    Object.assign(r, { resolution: 'CREATED', resolved_employee_id: `new-${r.id}`, resolved_at: new Date().toISOString(),
+      resolved_by: 'Admin (DEMO)' });
+    return r;
+  }
+
+  // DEMO: zaposleni iz uvoza bez Karnet/Obuka (ogledalo 0070).
+  private withoutBaseType: EmployeeWithoutBaseType[] = [
+    { employee_id: 'imp-1', full_name: 'Novaković Nina', employee_code: null, active: true,
+      employment_start_date: '2026-08-01', employment_end_date: null, assignment_id: 'ia-1',
+      center_id: CENTER_B6, center_code: 'B6', assignment_valid_from: '2026-08-01', assignment_valid_to: null },
+    { employee_id: 'imp-2', full_name: 'Petrović Mila', employee_code: null, active: true,
+      employment_start_date: '2026-08-01', employment_end_date: null, assignment_id: 'ia-2',
+      center_id: CENTER_B6, center_code: 'B6', assignment_valid_from: '2026-08-01', assignment_valid_to: null },
+  ];
+
+  async adminEmployeesWithoutBaseType(centerId?: Uuid | null): Promise<EmployeeWithoutBaseType[]> {
+    await delay(40);
+    this.requireAdmin();
+    return this.withoutBaseType.filter((e) => !centerId || e.center_id === centerId);
+  }
+
+  async adminBulkAssignBaseType(employeeIds: Uuid[], code: 'KARNET' | 'OBUKA', validFrom: IsoDate): Promise<BulkAssignResult> {
+    await delay(60);
+    this.requireAdmin();
+    if (code !== 'KARNET' && code !== 'OBUKA') throw new WdrApiError('Dozvoljeno je samo KARNET ili OBUKA.', '22023');
+    const results: BulkAssignResult['results'] = [];
+    for (const id of employeeIds) {
+      const e = this.withoutBaseType.find((x) => x.employee_id === id);
+      if (!e) { results.push({ employee_id: id, full_name: null, ok: false, message: 'Već ima osnovnu vrstu ili ne postoji.' }); continue; }
+      if (validFrom < e.employment_start_date) {
+        results.push({ employee_id: id, full_name: e.full_name, ok: false, message: 'Datum je van radnog odnosa.' });
+        continue;
+      }
+      this.withoutBaseType = this.withoutBaseType.filter((x) => x.employee_id !== id);
+      results.push({ employee_id: id, full_name: e.full_name, ok: true });
+    }
+    return { assigned: results.filter((r) => r.ok).length, failed: results.filter((r) => !r.ok).length, results };
+  }
+
+  async adminSetEmploymentDates(employeeId: Uuid, start: IsoDate, end: IsoDate | null): Promise<unknown> {
+    await delay(40);
+    this.requireAdmin();
+    const row = this.employeeRows.find((r) => r.employee.id === employeeId);
+    if (!row) throw new WdrApiError('Zaposleni ne postoji.', 'P0002');
+    if (end && end < start) throw new WdrApiError('Kraj radnog odnosa ne može biti pre početka.', '22007');
+    row.employee.employment_start_date = start;
+    row.employee.employment_end_date = end;
+    return row;
+  }
+
+  async adminImportStagingDismiss(id: Uuid, note: string): Promise<ImportStagingRow> {
+    if (note.trim().length < 5) throw new WdrApiError('Razlog odbacivanja je obavezan.', '23514');
+    const r = this.stagingPending(id);
+    Object.assign(r, { resolution: 'DISMISSED', resolved_at: new Date().toISOString(), resolution_note: note.trim(),
+      resolved_by: 'Admin (DEMO)' });
+    return r;
   }
 
   private requirePayoutWrite() {
@@ -3235,6 +3349,10 @@ export class MockWdrApi implements WdrApi {
     const t = MockWdrApi.PAYOUT_TYPES.find((x) => x.code === r.request_type)!;
     if (!r.employees.some((e) => e.employee_id === input.employee_id)) {
       throw new WdrApiError('Zaposleni nije na spisku zahteva.', 'PAYOUT_EMPLOYEE_NOT_LISTED');
+    }
+    // 0067: vreme od–do prima samo vrsta sa intervalom (posle 0067 nijedna).
+    if (t.input_mode !== 'TIME_RANGE' && (input.time_from || input.time_to)) {
+      throw new WdrApiError(`${t.name} se unosi bez vremena od–do.`, 'PAYOUT_TIME_NOT_ALLOWED');
     }
     r.lines = r.lines.filter((l) => !(l.employee_id === input.employee_id && l.work_date === input.work_date));
     const empty = t.input_mode === 'TIME_RANGE' ? !input.time_from && !input.time_to : !input.units;

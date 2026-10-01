@@ -75,8 +75,10 @@ const NAV_GROUPS: NavGroup[] = [
         permission: 'period.view_status', icon: 'clipboard', profiles: ['operator'],
       },
       {
+        // Završni prolaz §3: operater zaposlene traži/dodaje kroz Unos i Dodatne
+        // isplate; puna sekcija Zaposleni ostaje administratoru.
         to: '/zaposleni', label: 'Zaposleni',
-        permission: 'employee.view', icon: 'users', profiles: ['operator', 'admin'],
+        permission: 'employee.view', icon: 'users', profiles: ['admin'],
       },
     ],
   },
@@ -145,7 +147,11 @@ const NAV_GROUPS: NavGroup[] = [
         permission: 'analytics.ba.view', icon: 'chart', profiles: ['admin'],
       },
       {
-        to: '/administracija/dodatne-isplate', label: 'Cutover i tarife',
+        to: '/administracija/uvoz-zaposlenih', label: 'Uvoz zaposlenih',
+        permission: 'centers.manage', icon: 'users', profiles: ['admin'],
+      },
+      {
+        to: '/administracija/dodatne-isplate', label: 'Tarife dodatnih isplata',
         permission: 'payout.cutover.manage', icon: 'settings', profiles: ['admin'],
       },
       {

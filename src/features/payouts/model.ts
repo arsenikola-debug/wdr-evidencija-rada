@@ -28,9 +28,9 @@ export const STATUS_LABEL: Record<PayoutStatus, string> = {
 export const TYPE_HINT: Record<PayoutRequestType, string> = {
   DNEVNICA: 'Označite dane za koje zaposleni dobija dnevnicu. Iznos = broj dana × dnevnica centra.',
   ISPOMOC: 'Označite dane ispomoći. Iznos = broj dana × tarifa ispomoći centra zahteva.',
-  RADNA_SUBOTA: 'Za subotu unesite vreme rada. Iznos = sati × satnica radne subote centra.',
+  RADNA_SUBOTA: 'Označite radne subote zaposlenog. Iznos = broj označenih dana × dnevna tarifa radne subote centra.',
   PREKOVREMENI: 'Po danu unesite sate prekovremenog rada. Prazan dan = 0 sati.',
-  NOCNI_RAD: 'Unesite konkretan interval noćnog rada (može preko ponoći). Iznos = sati × satnica noćnog rada.',
+  NOCNI_RAD: 'Označite dane noćnog rada. Iznos = broj označenih dana × dnevna tarifa noćnog rada centra.',
 };
 
 export const PROBLEM_TEXT: Record<string, string> = {

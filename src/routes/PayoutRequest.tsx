@@ -190,7 +190,7 @@ export function PayoutRequest() {
                         const ok = dayAvailable(d, e.employee_id, dt);
                         const dis = !d.can_edit || !ok || saving === key;
                         const title = !ok
-                          ? 'Nije dostupno: van radnog odnosa, pre cutover-a ili nije subota'
+                          ? 'Nije dostupno: van radnog odnosa, pre početka Dodatnih isplata ili (za radnu subotu) nije subota'
                           : l?.problem
                             ? `Nema cene: ${PROBLEM_TEXT[l.problem] ?? l.problem}`
                             : l?.amount != null ? `${l.units} × ${formatRsd(l.rate ?? 0)} = ${formatRsd(l.amount)}` : undefined;
@@ -223,7 +223,7 @@ export function PayoutRequest() {
                       <td className="num">{s?.amount == null ? 'nepotpuno' : formatRsd(s.amount)}</td>
                       {r.request_type === 'NOCNI_RAD' && (
                         <td>
-                          <label className="nw-toggle" title="Deklarisani zaposleni se automatski predlažu u novim zahtevima">
+                          <label className="nw-toggle" title="Informativno: deklarisani zaposleni se automatski predlažu u novim zahtevima; ne utiče na obračun">
                             <input type="checkbox" checked={declared}
                               onChange={(ev) => void toggleDeclaration(e.employee_id, ev.target.checked)} />
                             deklarisan

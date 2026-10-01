@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { useCallback, useEffect, useState } from 'react';
 import { Banner, EmptyState, Spinner } from '../components/Bits';
 import { messageForCode } from '../features/grid/errors';
@@ -10,6 +11,7 @@ interface HistoryItem {
   transaction_type_label: string;
   source_type: string;
   snapshot_id: string;
+  submission_id?: string | null;
   center_code: string;
   economic_period_start: string;
   economic_period_end: string;
@@ -92,7 +94,7 @@ export function FinanceHistory() {
           <thead>
             <tr><th>Vrsta</th><th>Odobreno</th><th>Centar</th>
               <th>Ekonomski period</th><th>Stopova</th><th>Odobreni iznos</th>
-              <th>Poslao</th><th>Odobrio</th></tr>
+              <th>Poslao</th><th>Odobrio</th><th /></tr>
           </thead>
           <tbody>
             {items.map((h) => (
@@ -113,6 +115,14 @@ export function FinanceHistory() {
                 <td>{formatRsd(h.approved_amount)}</td>
                 <td>{h.submitted_by ?? '—'}</td>
                 <td>{h.approved_by ?? '—'}</td>
+                <td>
+                  {h.transaction_type === 'PERIOD' && h.submission_id && (
+                    <Link className="btn btn-small" to={`/finansije/prijava?prijava=${h.submission_id}`}
+                      title="Pregled po zaposlenom; dnevne stavke su pod Detalji">
+                      Pregled
+                    </Link>
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>

@@ -5,6 +5,7 @@ import { DailyEntry } from './routes/DailyEntry';
 import { Admin } from './routes/Admin';
 import { AdminReports } from './routes/AdminReports';
 import { AdminPayouts } from './routes/AdminPayouts';
+import { AdminImport } from './routes/AdminImport';
 import { Payouts } from './routes/Payouts';
 import { PayoutRequest } from './routes/PayoutRequest';
 import { FinancePayouts } from './routes/FinancePayouts';
@@ -144,6 +145,7 @@ export default function App() {
           <Route path="/finansije/dodatne-isplate" element={<RequireAuth permission="payout.approve"><FinancePayouts /></RequireAuth>} />
           <Route path="/korekcije" element={<RequireAuth permission="adjustment.create"><CorrectionBatches mode="operator" /></RequireAuth>} />
           <Route path="/finansije/korekcije" element={<RequireAuth permission="adjustment.approve"><CorrectionBatches mode="finance" /></RequireAuth>} />
+          <Route path="/administracija/uvoz-zaposlenih" element={<RequireAuth permission="centers.manage"><AdminImport /></RequireAuth>} />
           <Route path="/administracija/dodatne-isplate" element={<RequireAuth permission="payout.cutover.manage"><AdminPayouts /></RequireAuth>} />
           <Route
             path="/administracija/izvestaji"

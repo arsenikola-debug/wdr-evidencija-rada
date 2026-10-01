@@ -31,9 +31,9 @@ describe('keyboard mapping', () => {
     expect(mapKey({ key: '0' })).toBeNull();
   });
 
-  it('maps copy previous day and week', () => {
+  it('maps copy previous day; copy previous WEEK of cells no longer exists (K12)', () => {
     expect(mapKey({ key: 'd', ctrlKey: true })).toEqual({ type: 'copyPrevDay' });
-    expect(mapKey({ key: 'D', ctrlKey: true, shiftKey: true })).toEqual({ type: 'copyPrevWeek' });
+    expect(mapKey({ key: 'D', ctrlKey: true, shiftKey: true })).toBeNull();
   });
 
   it('supports Cmd on macOS the same way', () => {

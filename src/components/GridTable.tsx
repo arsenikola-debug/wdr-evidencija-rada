@@ -256,7 +256,7 @@ export function GridTable({
                 const t = totals?.get(emp.employee_id);
                 return (
                   <td
-                    className="row-total num"
+                    className={`row-total num${!t || t.blockedLines > 0 || totals === null ? ' row-total-empty' : ''}`}
                     title={
                       t && t.blockedLines > 0
                         ? `Iznos nije konačan: ${t.blockedLines} stavki bez pravila`

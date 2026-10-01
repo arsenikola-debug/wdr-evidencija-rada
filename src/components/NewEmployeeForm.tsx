@@ -37,11 +37,20 @@ export const EMPTY_EMPLOYEE_FORM: Form = {
 export function NewEmployeeForm({
   prefill,
   retireDnevnica = false,
+  lockedCenterId,
+  lockedPrimaryTypeCode,
+  compact = false,
   onCreated,
   onUseExisting,
   onCancel,
 }: {
   prefill?: Partial<Form>;
+  /** Inline iz Unosa: centar je trenutno izabrani i ne menja se ovde. */
+  lockedCenterId?: string;
+  /** Inline iz Unosa: osnovna vrsta = izabrana sekcija (KARNET / OBUKA). */
+  lockedPrimaryTypeCode?: string;
+  /** Inline: bez sekcija koje operateru nisu potrebne za početak rada. */
+  compact?: boolean;
   /** Posle cutover-a DNEVNICA nije osnovni tip (K2). */
   retireDnevnica?: boolean;
   onCreated(profile: EmployeeProfile): void;
@@ -59,9 +68,18 @@ export function NewEmployeeForm({
   useEffect(() => {
     api.getEmployeeFormReference().then((r) => {
       setCfg(r);
-      setForm((f) => (f.center_id || r.centers.length !== 1 ? f : { ...f, center_id: r.centers[0].id }));
+      setForm((f) => {
+        let next = f;
+        if (lockedCenterId) next = { ...next, center_id: lockedCenterId };
+        else if (!f.center_id && r.centers.length === 1) next = { ...next, center_id: r.centers[0].id };
+        if (lockedPrimaryTypeCode) {
+          const pt = r.payment_types.find((p) => p.code === lockedPrimaryTypeCode && p.kind === 'PRIMARY');
+          if (pt) next = { ...next, primary_payment_type_id: pt.id };
+        }
+        return next;
+      });
     }).catch(() => setCfg(null));
-  }, [api]);
+  }, [api, lockedCenterId, lockedPrimaryTypeCode]);
 
   const primaryTypes = useMemo(
     () => (cfg?.payment_types ?? []).filter(
@@ -148,12 +166,13 @@ export function NewEmployeeForm({
       <h2>Raspodela</h2>
       <div className="form-grid">
         <label><span>Centar</span>
-          <select value={form.center_id} onChange={(e) => set({ center_id: e.target.value })}>
+          <select value={form.center_id} disabled={Boolean(lockedCenterId)}
+            onChange={(e) => set({ center_id: e.target.value })}>
             <option value="">—</option>
             {(cfg?.centers ?? []).map((c) => <option key={c.id} value={c.id}>{c.code} · {c.name}</option>)}
           </select></label>
         <label><span>Osnovna vrsta isplate</span>
-          <select value={form.primary_payment_type_id}
+          <select value={form.primary_payment_type_id} disabled={Boolean(lockedPrimaryTypeCode)}
             onChange={(e) => set({ primary_payment_type_id: e.target.value })}>
             <option value="">—</option>
             {primaryTypes.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
@@ -166,7 +185,15 @@ export function NewEmployeeForm({
           </select></label>
       </div>
 
-      <h2>Prevoz</h2>
+      {(lockedCenterId || lockedPrimaryTypeCode) && (
+        <p className="muted small">
+          Centar i osnovna vrsta su preuzeti iz Unosa. Raspodela važi od datuma početka
+          radnog odnosa; datum se ne pretpostavlja — unesite stvarni.
+        </p>
+      )}
+
+      {!compact && <h2>Prevoz</h2>}
+      {!compact && (<>
       <div className="form-grid">
         <label><span>Potreban prevoz</span>
           <select value={form.transport_required}
@@ -195,6 +222,7 @@ export function NewEmployeeForm({
 
       <label className="full-width"><span>Napomena</span>
         <textarea rows={2} value={form.notes} onChange={(e) => set({ notes: e.target.value })} /></label>
+      </>)}
 
       {formErrors.length > 0 && (
         <Banner kind="warning"><ul>{formErrors.map((e) => <li key={e}>{e}</li>)}</ul></Banner>

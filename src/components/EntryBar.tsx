@@ -1,10 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Banner } from './Bits';
+import { Banner, StatusBadge } from './Bits';
 import { addDays, periodError, weekStart } from '../features/payouts/model';
 import type { BaseType } from '../features/grid/eligibility';
 import type { IsoDate, SubmissionListItem, Uuid } from '../lib/api/types';
 
 const TYPE_LABEL: Record<BaseType, string> = { KARNET: 'Karnet', OBUKA: 'Obuka', OSTALO: 'Ostalo' };
+
+function fmt(iso: string): string {
+  return `${iso.slice(8, 10)}.${iso.slice(5, 7)}.${iso.slice(0, 4)}`;
+}
 
 /**
  * Vrh stranice Unos (redizajn §1, K1): Centar · Period · Karnet/Obuka.
@@ -24,6 +28,8 @@ export function EntryBar({
   onOpen,
   onBaseType,
   onCopyPreviousWeek,
+  onAddEmployee,
+  onContextChange,
 }: {
   centers: Array<{ center_id: Uuid; center_code: string }>;
   current: SubmissionListItem | null;
@@ -34,6 +40,14 @@ export function EntryBar({
   onOpen(centerId: Uuid, from: IsoDate, to: IsoDate): void;
   onBaseType(t: BaseType): void;
   onCopyPreviousWeek?(): void;
+  /** „+ Dodaj zaposlenog" u izabrani centar i sekciju (Karnet/Obuka). */
+  onAddEmployee?(): void;
+  /**
+   * Da li izbor u traci odgovara otvorenoj prijavi. Dok ne odgovara (period nije
+   * ispravan ili se nova prijava još otvara), grid se NE prikazuje — nikada se ne
+   * prikazuje prijava drugog perioda kao da pripada novom izboru.
+   */
+  onContextChange?(state: { valid: boolean; matchesCurrent: boolean }): void;
 }) {
   const [centerId, setCenterId] = useState<Uuid>(current?.center_id ?? centers[0]?.center_id ?? '');
   const [from, setFrom] = useState<IsoDate>(current?.period_start ?? weekStart(new Date().toISOString().slice(0, 10)));
@@ -48,8 +62,13 @@ export function EntryBar({
   }, [current]);
 
   const perr = periodError(from, to);
-  const same = current && current.center_id === centerId
-    && current.period_start === from && current.period_end === to;
+  const same = Boolean(current && current.center_id === centerId
+    && current.period_start === from && current.period_end === to);
+
+  useEffect(() => {
+    onContextChange?.({ valid: !perr && Boolean(centerId), matchesCurrent: same });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [perr, centerId, same]);
 
   // Automatsko otvaranje: posle kratke pauze, kada je izbor ispravan i drugačiji.
   useEffect(() => {
@@ -66,7 +85,7 @@ export function EntryBar({
 
   return (
     <div className="entry-bar">
-      <div className="entry-bar-row">
+      <div className="entry-bar-row toolbar-unified">
         <label>
           <span>Centar</span>
           {centers.length === 1 ? (
@@ -91,23 +110,39 @@ export function EntryBar({
           <input type="date" value={to} min={from} max={from ? addDays(from, 6) : undefined}
             disabled={busy} onChange={(e) => setTo(e.target.value)} />
         </label>
-        <div className="entry-bar-tabs" role="tablist" aria-label="Osnovna naknada">
+        <div className="entry-bar-tabs segmented" role="tablist" aria-label="Osnovna naknada">
           {tabs.map((t) => (
             <button key={t} type="button" role="tab" aria-selected={baseType === t}
-              className={baseType === t ? 'btn btn-primary' : 'btn'}
+              className={baseType === t ? 'btn seg-active' : 'btn'}
               onClick={() => onBaseType(t)}>
               {TYPE_LABEL[t]}{counts ? ` (${counts[t]})` : ''}
             </button>
           ))}
         </div>
         {onCopyPreviousWeek && (
-          <button type="button" className="btn btn-quiet" onClick={onCopyPreviousWeek} disabled={busy || !current}
+          <button type="button" className="btn" onClick={onCopyPreviousWeek} disabled={busy || !same}
             title="Upoređuje spisak zaposlenih sa prethodnom nedeljom; ne kopira sate, statuse ni iznose">
             Kopiraj prethodnu nedelju
           </button>
         )}
+        {onAddEmployee && baseType !== 'OSTALO' && (
+          <button type="button" className="btn" onClick={onAddEmployee} disabled={busy || !same}>
+            + Dodaj zaposlenog
+          </button>
+        )}
         {busy && <span className="muted small">Otvaranje…</span>}
       </div>
+      {same && current && (
+        <div className="entry-bar-summary" aria-label="Izabrani kontekst">
+          <strong>{current.center_code}</strong>
+          <span>·</span>
+          <span>{TYPE_LABEL[baseType].toUpperCase()}</span>
+          <span>·</span>
+          <span>{fmt(current.period_start)}–{fmt(current.period_end)}</span>
+          <span>·</span>
+          <StatusBadge status={current.status} />
+        </div>
+      )}
       {perr && <Banner kind="warning">{perr}</Banner>}
       {error && <Banner kind="error">{error}</Banner>}
     </div>

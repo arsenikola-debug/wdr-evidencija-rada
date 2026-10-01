@@ -9,9 +9,8 @@ import { useGrid } from '../features/grid/useGrid';
 import { WdrApiError } from '../lib/api';
 import type { SubmissionListItem } from '../lib/api/types';
 import { useAuth } from '../lib/auth/AuthProvider';
-import { AssistanceDialog } from '../components/AssistanceDialog';
-import { OvertimeDialog } from '../components/OvertimeDialog';
 import { EntryBar } from '../components/EntryBar';
+import { InlineAddEmployee } from '../components/InlineAddEmployee';
 import {
   employeeTotals,
   fromPreviewLines,
@@ -19,14 +18,12 @@ import {
 } from '../features/finance/employeeSummary';
 
 export function DailyEntry() {
-  const { api, session } = useAuth();
+  const { api, session, can } = useAuth();
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
 
   const [submissions, setSubmissions] = useState<SubmissionListItem[] | null>(null);
   const [listError, setListError] = useState<string | null>(null);
-  const [assistOpen, setAssistOpen] = useState(false);
-  const [overtimeOpen, setOvertimeOpen] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -60,6 +57,13 @@ export function DailyEntry() {
     [session],
   );
   const [opening, setOpening] = useState(false);
+  const [barState, setBarState] = useState<{ valid: boolean; matchesCurrent: boolean }>({
+    valid: true, matchesCurrent: true,
+  });
+  const [addingEmployee, setAddingEmployee] = useState(false);
+  const [addNotice, setAddNotice] = useState<string | null>(null);
+
+
   const [openError, setOpenError] = useState<string | null>(null);
   const [copyInfo, setCopyInfo] = useState<string | null>(null);
 
@@ -141,6 +145,8 @@ export function DailyEntry() {
       onOpen={(c, f, t) => void openPeriod(c, f, t)}
       onBaseType={grid.setBaseType}
       onCopyPreviousWeek={() => void comparePreviousWeek()}
+      onAddEmployee={can('employee.create') ? () => setAddingEmployee(true) : undefined}
+      onContextChange={setBarState}
     />
   ) : null;
 
@@ -174,48 +180,6 @@ export function DailyEntry() {
   const rows = grid.payload?.employees.length ?? 0;
   const cols = grid.payload?.dates.length ?? 0;
 
-  /*
-   * Ispomoć se može uneti samo za centar u kome korisnik sme da radi. Baza to
-   * svakako proverava (rpc_add_assistance_segment); ovde se samo ne nudi opcija
-   * koja bi garantovano bila odbijena. Centar same prijave ostaje u spisku.
-   */
-  const assistanceCenters = useMemo(() => {
-    const all = grid.payload?.reference.centers ?? [];
-    const own = grid.payload?.submission.center_id;
-    const allowed = new Set((session?.centers ?? []).filter((c) => c.can_write).map((c) => c.center_id));
-    const filtered = all.filter((c) => allowed.has(c.id) || c.id === own);
-    // Ako sesija nema nijedan poklopljen centar, ne gasimo dijalog — vraćamo
-    // bar centar prijave, a odluku prepuštamo serveru.
-    return filtered.length > 0 ? filtered : all.filter((c) => c.id === own);
-  }, [grid.payload, session]);
-
-  const focusedEmployee = useMemo(
-    () => grid.payload?.employees[grid.selection.focus.r] ?? null,
-    [grid.payload, grid.selection.focus.r],
-  );
-  const focusedDate = useMemo(
-    () => grid.payload?.dates[grid.selection.focus.c] ?? null,
-    [grid.payload, grid.selection.focus.c],
-  );
-
-  const focusedCell = useMemo(
-    () =>
-      grid.payload?.cells.find(
-        (c) =>
-          c.employee_id === focusedEmployee?.employee_id &&
-          c.work_date === focusedDate,
-      ) ?? null,
-    [grid.payload, focusedEmployee, focusedDate],
-  );
-
-  const focusedOvertimeUnits =
-    focusedCell?.components.find(
-      (c) =>
-        c.payment_type_code === 'PREKOVREMENI' &&
-        c.work_segment_id == null &&
-        c.in_this_submission,
-    )?.units ?? 0;
-
   function onKeyDown(e: React.KeyboardEvent) {
     if (rows === 0 || cols === 0) return;
     const action = mapKey(e);
@@ -241,9 +205,6 @@ export function DailyEntry() {
       case 'copyPrevDay':
         grid.copyPreviousDay();
         break;
-      case 'copyPrevWeek':
-        grid.copyPreviousWeek();
-        break;
       case 'selectAll':
         grid.selectEverything();
         break;
@@ -260,7 +221,7 @@ export function DailyEntry() {
         void grid.flush();
         break;
       case 'openCell':
-        setAssistOpen(true);
+        // Osnovni Unos nema dijalog dodatnih isplata (ispomoć/prekovremeni).
         break;
       default:
         break;
@@ -301,6 +262,26 @@ export function DailyEntry() {
   return (
     <div className="entry-page">
       {entryBar}
+      {addNotice && <Banner kind="success" onClose={() => setAddNotice(null)}>{addNotice}</Banner>}
+      {addingEmployee && current && grid.baseType !== 'OSTALO' && (
+        <InlineAddEmployee
+          centerId={current.center_id}
+          centerCode={current.center_code}
+          baseType={grid.baseType}
+          onClose={() => setAddingEmployee(false)}
+          onDone={(msg) => {
+            setAddingEmployee(false);
+            setAddNotice(msg);
+            void grid.reload();
+          }}
+        />
+      )}
+      {(!barState.valid || !barState.matchesCurrent) ? (
+        <EmptyState
+          title={barState.valid ? 'Otvaranje izabranog perioda…' : 'Izaberite ispravan centar i period'}
+          hint="Grid se prikazuje tek kada izbor u traci odgovara otvorenoj prijavi (najviše 7 dana)."
+        />
+      ) : (<>
       {copyInfo && <Banner kind="info">{copyInfo}</Banner>}
       {grid.payload.employees.length === 0 && grid.eligibility.available && (
         <Banner kind="info">
@@ -310,9 +291,6 @@ export function DailyEntry() {
       )}
       <GridToolbar
         payload={grid.payload}
-        submissions={submissions}
-        selectedSubmissionId={grid.payload.submission.id}
-        onSelectSubmission={(id) => setParams({ prijava: id })}
         selection={grid.selection}
         editable={grid.editable}
         completion={grid.completion}
@@ -330,9 +308,6 @@ export function DailyEntry() {
         onApplyShift={(i) => grid.applyShiftIndexToSelection(i)}
         onClear={grid.clearSelection}
         onCopyDay={grid.copyPreviousDay}
-        onCopyWeek={grid.copyPreviousWeek}
-        onAssistance={() => setAssistOpen(true)}
-        onOvertime={() => setOvertimeOpen(true)}
         onOpenPreview={() => {
           void grid.flush().then(() =>
             navigate(`/unos/pregled?prijava=${grid.payload!.submission.id}`),
@@ -393,78 +368,8 @@ export function DailyEntry() {
           obračunu.
         </p>
       </div>
+      </>)}
 
-      {assistOpen && focusedEmployee && focusedDate && (
-        <AssistanceDialog
-          employee={focusedEmployee}
-          date={focusedDate}
-          centers={assistanceCenters}
-          shiftTemplates={grid.payload.reference.shift_templates}
-          ownCenterId={grid.payload.submission.center_id}
-          onClose={() => setAssistOpen(false)}
-          onSubmit={async (input) => {
-            try {
-              const res = await api.addAssistanceSegment(input);
-              await grid.reload();
-              setAssistOpen(false);
-              return {
-                ok: true as const,
-                message: res.created_work_segment
-                  ? `Ispomoć sačuvana: ${res.work_center_code} ${res.shift_start.slice(0, 5)}–${res.shift_end.slice(0, 5)}, trošak nosi ${res.cost_center_code}.`
-                  : 'Ista ispomoć je već bila uneta — ništa nije promenjeno.',
-              };
-            } catch (err) {
-              const code = err instanceof WdrApiError ? err.code : null;
-              return {
-                ok: false as const,
-                message: messageForCode(code, err instanceof Error ? err.message : undefined),
-              };
-            }
-          }}
-        />
-      )}
-
-      {overtimeOpen && focusedEmployee && focusedDate && (
-        <OvertimeDialog
-          employee={focusedEmployee}
-          date={focusedDate}
-          initialUnits={focusedOvertimeUnits}
-          onClose={() => setOvertimeOpen(false)}
-          onSubmit={async (units) => {
-            try {
-              await grid.flush();
-
-              await api.setOvertimeComponent({
-                p_submission_id: grid.payload!.submission.id,
-                p_employee_id: focusedEmployee.employee_id,
-                p_work_date: focusedDate,
-                p_units: units,
-              });
-
-              await grid.reload();
-              setOvertimeOpen(false);
-
-              return {
-                ok: true as const,
-                message:
-                  units > 0
-                    ? `Prekovremeni sati sačuvani: ${units}.`
-                    : 'Prekovremeni sati su uklonjeni.',
-              };
-            } catch (err) {
-              const code = err instanceof WdrApiError ? err.code : null;
-
-              return {
-                ok: false as const,
-                message: messageForCode(
-                  code,
-                  err instanceof Error ? err.message : undefined,
-                ),
-              };
-            }
-          }}
-        />
-      )}
     </div>
   );
 }

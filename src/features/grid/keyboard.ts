@@ -7,7 +7,6 @@ export type GridAction =
   | { type: 'shiftIndex'; index: number }
   | { type: 'clear' }
   | { type: 'copyPrevDay' }
-  | { type: 'copyPrevWeek' }
   | { type: 'selectAll' }
   | { type: 'selectRow' }
   | { type: 'selectColumn' }
@@ -37,7 +36,9 @@ export function mapKey(e: KeyEventLike): GridAction | null {
   if (ctrl) {
     switch (e.key.toLowerCase()) {
       case 'd':
-        return shift ? { type: 'copyPrevWeek' } : { type: 'copyPrevDay' };
+        // K12: kopiranje prethodne nedelje NE kopira dnevne podatke, pa prečica
+        // Ctrl+Shift+D (koja je kopirala ćelije nedelju ranije) više ne postoji.
+        return shift ? null : { type: 'copyPrevDay' };
       case 'a':
         return { type: 'selectAll' };
       case 's':
@@ -106,7 +107,6 @@ export const KEY_HELP: Array<{ keys: string; what: string }> = [
   { keys: 'N', what: 'ne radi' },
   { keys: 'Delete', what: 'obriši izabrane ćelije' },
   { keys: 'Ctrl + D', what: 'kopiraj prethodni dan' },
-  { keys: 'Ctrl + Shift + D', what: 'kopiraj prethodnu nedelju' },
   { keys: 'Ctrl + A', what: 'izaberi sve' },
   { keys: 'Ctrl + ←', what: 'izaberi red' },
   { keys: 'Ctrl + ↑', what: 'izaberi kolonu' },

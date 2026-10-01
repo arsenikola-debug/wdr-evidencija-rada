@@ -176,3 +176,71 @@ export function employeeTotals(lines: SummaryLine[]): Map<string, EmployeeTotal>
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }
+
+// ---------------------------------------------------------------------------
+// Završni prolaz §5: Finance pregled Karnet/Obuka po zaposlenom (kao Preview)
+// ---------------------------------------------------------------------------
+
+export interface PeriodLine extends SummaryLine {
+  attendance_status?: string | null;
+}
+
+export interface EmployeePeriodRow {
+  employeeId: string;
+  employeeName: string;
+  employeeCode: string | null;
+  /** npr. „Karnet" ili „Karnet + Obuka" kada se tip menja u toku perioda. */
+  baseTypes: string[];
+  /** Broj plaćenih osnovnih dana po statusu (rad, GO, BO …). */
+  dayCounts: Record<string, number>;
+  baseAmount: number;
+  /** Komponente (stari model pre cutover-a: ispomoć, prekovremeni …). */
+  otherAmount: number;
+  transportAmount: number;
+  total: number;
+  blockedLines: number;
+}
+
+const STATUS_SHORT: Record<string, string> = {
+  WORK: 'rad', GO: 'GO', BO: 'BO', OFF: 'slobodan', NOT_WORKING: 'ne radi',
+};
+
+/**
+ * Jedan red po zaposlenom za ceo period: osnovna naknada, ostale stavke, prevoz
+ * (odvojeno) i UKUPNO. Samo zbir serverskih iznosa — ništa se ne preračunava.
+ * Stavka bez pravila → red je nepotpun (`blockedLines`), ne nula.
+ */
+export function employeePeriodRows(lines: PeriodLine[]): EmployeePeriodRow[] {
+  const map = new Map<string, EmployeePeriodRow>();
+  for (const l of lines) {
+    const r =
+      map.get(l.employee_id) ??
+      {
+        employeeId: l.employee_id, employeeName: l.employee_name, employeeCode: l.employee_code ?? null,
+        baseTypes: [], dayCounts: {}, baseAmount: 0, otherAmount: 0, transportAmount: 0, total: 0,
+        blockedLines: 0,
+      };
+    if (l.line_kind === 'PRIMARY') {
+      const label = PAYMENT_LABEL[l.payment_type_code ?? ''] ?? l.payment_type_code ?? '—';
+      if (!r.baseTypes.includes(label)) r.baseTypes.push(label);
+      const st = STATUS_SHORT[l.attendance_status ?? ''] ?? (l.attendance_status ?? 'ostalo');
+      r.dayCounts[st] = (r.dayCounts[st] ?? 0) + l.units;
+    }
+    if (l.amount == null) {
+      r.blockedLines += 1;
+    } else if (l.line_kind === 'TRANSPORT') {
+      r.transportAmount = round2(r.transportAmount + l.amount);
+    } else if (l.line_kind === 'PRIMARY') {
+      r.baseAmount = round2(r.baseAmount + l.amount);
+    } else {
+      r.otherAmount = round2(r.otherAmount + l.amount);
+    }
+    r.total = round2(r.baseAmount + r.otherAmount + r.transportAmount);
+    map.set(l.employee_id, r);
+  }
+  return [...map.values()].sort((a, b) => a.employeeName.localeCompare(b.employeeName, 'sr'));
+}
+
+export function fromCalcLinesWithStatus(lines: CalcLine[]): PeriodLine[] {
+  return lines.map((l) => ({ ...fromCalcLines([l])[0], attendance_status: l.attendance_status }));
+}

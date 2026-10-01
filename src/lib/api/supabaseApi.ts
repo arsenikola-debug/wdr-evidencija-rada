@@ -9,6 +9,11 @@ import type {
   CorrectionBatchHeader,
   CutoverReadiness,
   NightWorkDeclaration,
+  BulkAssignResult,
+  EmployeeWithoutBaseType,
+  ImportCreateInput,
+  ImportStagingList,
+  ImportStagingRow,
   PayoutContext,
   PayoutDuplicateMatch,
   PayoutEmployeeSearchResult,
@@ -1125,6 +1130,42 @@ export class SupabaseWdrApi implements WdrApi {
     return this.rpc<{ matches: PayoutDuplicateMatch[]; note: string }>('rpc_payout_employee_duplicate_check', {
       p_first_name: firstName, p_last_name: lastName, p_employee_code: employeeCode ?? null,
     });
+  }
+  async adminImportStagingList(batch?: string | null, resolutions?: string[] | null): Promise<ImportStagingList> {
+    return this.rpc<ImportStagingList>('rpc_admin_import_staging_list', {
+      p_batch: batch ?? null, p_resolutions: resolutions ?? null,
+    });
+  }
+  async adminImportStagingLink(id: Uuid, employeeId: Uuid, note?: string | null): Promise<ImportStagingRow> {
+    return this.rpc<ImportStagingRow>('rpc_admin_import_staging_link', {
+      p_id: id, p_employee_id: employeeId, p_note: note ?? null,
+    });
+  }
+  async adminImportStagingCreate(input: ImportCreateInput): Promise<ImportStagingRow> {
+    return this.rpc<ImportStagingRow>('rpc_admin_import_staging_create', {
+      p_id: input.id, p_employee_code: input.employee_code, p_first_name: input.first_name,
+      p_last_name: input.last_name, p_employment_start_date: input.employment_start_date,
+      p_center_id: input.center_id, p_primary_payment_type_id: input.primary_payment_type_id,
+      p_default_shift_template_id: input.default_shift_template_id,
+      p_transport_required: input.transport_required, p_transport_provider_id: input.transport_provider_id,
+      p_transport_valid_from: input.transport_valid_from, p_confirm_similar: input.confirm_similar,
+    });
+  }
+  async adminEmployeesWithoutBaseType(centerId?: Uuid | null): Promise<EmployeeWithoutBaseType[]> {
+    return this.rpc<EmployeeWithoutBaseType[]>('rpc_admin_employees_without_base_type', { p_center_id: centerId ?? null });
+  }
+  async adminBulkAssignBaseType(employeeIds: Uuid[], code: 'KARNET' | 'OBUKA', validFrom: IsoDate): Promise<BulkAssignResult> {
+    return this.rpc<BulkAssignResult>('rpc_admin_bulk_assign_base_type', {
+      p_employee_ids: employeeIds, p_payment_type_code: code, p_valid_from: validFrom,
+    });
+  }
+  async adminSetEmploymentDates(employeeId: Uuid, start: IsoDate, end: IsoDate | null, align = false): Promise<unknown> {
+    return this.rpc<unknown>('rpc_admin_set_employment_dates', {
+      p_employee_id: employeeId, p_start: start, p_end: end, p_align: align,
+    });
+  }
+  async adminImportStagingDismiss(id: Uuid, note: string): Promise<ImportStagingRow> {
+    return this.rpc<ImportStagingRow>('rpc_admin_import_staging_dismiss', { p_id: id, p_note: note });
   }
   async adminPayoutCutoverReadiness(date: IsoDate): Promise<CutoverReadiness> {
     return this.rpc<CutoverReadiness>('rpc_admin_payout_cutover_readiness', { p_date: date });

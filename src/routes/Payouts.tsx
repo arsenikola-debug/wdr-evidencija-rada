@@ -18,6 +18,7 @@ export function Payouts() {
   const [ctx, setCtx] = useState<PayoutContext | null>(null);
   const [items, setItems] = useState<PayoutListItem[] | null>(null);
   const [type, setType] = useState<PayoutRequestType>('DNEVNICA');
+  const [creating, setCreating] = useState(false);
   const [centerId, setCenterId] = useState('');
   const [from, setFrom] = useState(weekStart(new Date().toISOString().slice(0, 10)));
   const [to, setTo] = useState(addDays(weekStart(new Date().toISOString().slice(0, 10)), 6));
@@ -35,6 +36,7 @@ export function Payouts() {
       setCtx(c);
       setItems(l);
       if (c.centers.length === 1) setCenterId(c.centers[0].id);
+      // Datum od kog Dodatne isplate važe; korisniku se ne prikazuje kao tehnički pojam.
       if (c.cutover_date && from < c.cutover_date) {
         setFrom(c.cutover_date);
         setTo(addDays(c.cutover_date, 6));
@@ -77,8 +79,8 @@ export function Payouts() {
     }
   }
 
-  const approvedOriginals = useMemo(
-    () => (items ?? []).filter((i) => i.status === 'FINANCE_APPROVED' && !i.is_correction),
+  const hasApproved = useMemo(
+    () => (items ?? []).some((i) => i.status === 'FINANCE_APPROVED' && !i.is_correction),
     [items],
   );
 
@@ -90,31 +92,40 @@ export function Payouts() {
       {error && <Banner kind="error">{error}</Banner>}
 
       {ctx && !ctx.active && (
-        <Banner kind="warning">
-          Dodatne isplate još nisu aktivirane (cutover). Do aktivacije se dnevnice, ispomoć,
-          radna subota i prekovremeni unose po dosadašnjem modelu.
-        </Banner>
+        <Banner kind="info">Dodatne isplate još nisu aktivirane.</Banner>
       )}
 
       {ctx?.active && (
+        <div className="filter-row">
+          <button type="button" className="btn btn-primary" onClick={() => setCreating((v) => !v)}>
+            {creating ? 'Zatvori' : '+ Novi zahtev'}
+          </button>
+          <span className="muted small">
+            Svaka vrsta je poseban zahtev koji se zasebno šalje Finansijama.
+          </span>
+        </div>
+      )}
+
+      {ctx?.active && creating && (
         <section className="control-section">
-          <h2>Novi ili postojeći zahtev</h2>
-          <p className="muted small">
-            Dodatne isplate važe od {ctx.cutover_date}. Svaka vrsta je poseban zahtev koji se
-            zasebno šalje Finansijama.
-          </p>
-          <div className="entry-bar-tabs" role="tablist" aria-label="Vrsta dodatne isplate">
+          <h2>Novi zahtev</h2>
+          <div className="entry-bar-tabs segmented" role="tablist" aria-label="Vrsta dodatne isplate">
             {ctx.types.map((t) => (
               <button key={t.code} type="button" role="tab" aria-selected={type === t.code}
-                className={type === t.code ? 'btn btn-primary' : 'btn'} onClick={() => setType(t.code)}>
+                className={type === t.code ? 'btn seg-active' : 'btn'} onClick={() => setType(t.code)}>
                 {t.name}
               </button>
             ))}
+            {/* Stopovi: postojeći modul i obračun; ovde je samo ulaz kao šesti tip. */}
+            <button type="button" role="tab" className="btn" onClick={() => navigate('/stopovi-kurira')}
+              title="Stopovi imaju postojeći obračun i sopstveni ekran">
+              Stopovi
+            </button>
           </div>
           <p className="muted small">{TYPE_HINT[type]}</p>
-          <div className="report-filters">
+          <div className="report-filters toolbar-unified">
             <label>
-              Centar
+              <span>Centar</span>
               {ctx.centers.length === 1 ? (
                 <strong className="entry-bar-static">{ctx.centers[0].code}</strong>
               ) : (
@@ -125,12 +136,12 @@ export function Payouts() {
               )}
             </label>
             <label>
-              Od
+              <span>Datum od</span>
               <input type="date" value={from} min={ctx.cutover_date ?? undefined}
                 onChange={(e) => { setFrom(e.target.value); if (e.target.value) setTo(addDays(e.target.value, 6)); }} />
             </label>
             <label>
-              Do
+              <span>Datum do</span>
               <input type="date" value={to} min={from} max={from ? addDays(from, 6) : undefined}
                 onChange={(e) => setTo(e.target.value)} />
             </label>
@@ -153,8 +164,8 @@ export function Payouts() {
             <table className="list list-compact">
               <thead>
                 <tr>
-                  <th>Vrsta</th><th>Centar</th><th>Period</th><th>Status</th>
-                  <th className="num">Zaposlenih</th><th className="num">Ukupno</th><th />
+                  <th>Tip</th><th>Period</th><th>Centar</th>
+                  <th className="num">Zaposlenih</th><th className="num">Iznos</th><th>Status</th><th />
                 </tr>
               </thead>
               <tbody>
@@ -164,47 +175,32 @@ export function Payouts() {
                       {i.request_type_name}
                       {i.is_correction && <span className="chip chip-warn"> KOREKCIJA</span>}
                     </td>
-                    <td>{i.center_code}</td>
                     <td>{i.period_start} – {i.period_end}</td>
-                    <td>{STATUS_LABEL[i.status]}</td>
+                    <td>{i.center_code}</td>
                     <td className="num">{i.employees}</td>
-                    <td className="num">{i.total_amount == null ? 'nepotpuno' : formatRsd(i.total_amount)}</td>
-                    <td><Link className="btn btn-small" to={`/dodatne-isplate/${i.id}`}>Otvori</Link></td>
+                    <td className="num">{i.total_amount == null ? 'nepotpuno' : `${formatRsd(i.total_amount)} RSD`}</td>
+                    <td>{STATUS_LABEL[i.status]}</td>
+                    <td className="row-actions">
+                      <Link className="btn btn-small" to={`/dodatne-isplate/${i.id}`}>Otvori</Link>
+                      {i.status === 'FINANCE_APPROVED' && !i.is_correction && (
+                        <button type="button" className="btn btn-small" onClick={() => void openCorrection(i)}
+                          title="Original ostaje nepromenjen; korekcija je nov zahtev vezan za njega">
+                          Kreiraj korekciju
+                        </button>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
         )}
-      </section>
-
-      <section className="control-section">
-        <h2>Korekcija prethodnog obračuna</h2>
-        <p className="muted small">
-          Poslat, a neodobren zahtev Finansije vraćaju na ispravku. Odobren zahtev ostaje
-          nepromenjen — zaboravljena stavka ide kao posebna KOREKCIJA vezana za original.
-          Korekcije osnovnog Karnet/Obuka obračuna su u <Link to="/korekcije">Korekcije obračuna</Link>.
-        </p>
-        {approvedOriginals.length === 0 ? (
-          <p className="muted small">Nema odobrenih zahteva za korekciju.</p>
-        ) : (
-          <table className="list list-compact">
-            <tbody>
-              {approvedOriginals.map((i) => (
-                <tr key={i.id}>
-                  <td>{i.request_type_name}</td>
-                  <td>{i.center_code}</td>
-                  <td>{i.period_start} – {i.period_end}</td>
-                  <td className="num">{i.total_amount == null ? '—' : formatRsd(i.total_amount)}</td>
-                  <td>
-                    <button type="button" className="btn btn-small" onClick={() => void openCorrection(i)}>
-                      Koriguj
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        {hasApproved && (
+          <p className="muted small">
+            Poslat, a neodobren zahtev Finansije vraćaju na ispravku. Odobren zahtev se ne menja —
+            zaboravljena stavka ide kroz „Kreiraj korekciju". Korekcije osnovnog Karnet/Obuka
+            obračuna su u <Link to="/korekcije">Korekcije obračuna</Link>.
+          </p>
         )}
       </section>
     </div>

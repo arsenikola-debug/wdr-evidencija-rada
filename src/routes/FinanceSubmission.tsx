@@ -12,7 +12,8 @@ import {
   totalForDisplay,
   transportByProvider,
 } from '../features/finance/recap';
-import { fromCalcLines, summarizeByEmployee } from '../features/finance/employeeSummary';
+import { employeePeriodRows, fromCalcLines, fromCalcLinesWithStatus, summarizeByEmployee } from '../features/finance/employeeSummary';
+import { EmployeePeriodTable } from '../components/EmployeePeriodTable';
 import { EmployeeSummaryTables } from '../components/EmployeeSummaryTables';
 import { WdrApiError } from '../lib/api';
 import type { FinanceSubmissionDetail } from '../lib/api/types';
@@ -299,10 +300,18 @@ export function FinanceSubmission() {
           {s.center_code} · {s.period_label} · zaposleni koji je deo perioda Karnet, a deo
           Obuka, prikazan je u obe grupe.
         </p>
-        <EmployeeSummaryTables
-          groups={summarizeByEmployee(fromCalcLines(data.lines))}
+        <EmployeePeriodTable
+          rows={employeePeriodRows(fromCalcLinesWithStatus(data.lines))}
           periodLabel={`${s.period_start} – ${s.period_end}`}
         />
+
+        <details className="lines-details">
+          <summary>Po vrsti naknade</summary>
+          <EmployeeSummaryTables
+            groups={summarizeByEmployee(fromCalcLines(data.lines))}
+            periodLabel={`${s.period_start} – ${s.period_end}`}
+          />
+        </details>
 
         <details className="lines-details">
           <summary>Po zaposlenom i danu ({data.employee_days.length}) — drill-down</summary>

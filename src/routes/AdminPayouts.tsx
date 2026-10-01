@@ -7,13 +7,22 @@ import { WdrApiError } from '../lib/api';
 import type { AdminConfig, CutoverReadiness, PayoutContext } from '../lib/api/types';
 import { useAuth } from '../lib/auth/AuthProvider';
 
-/** Jedinica pravila koju engine dodatnih isplata prihvata po vrsti (0063). */
+/**
+ * Jedinica pravila koju obračun dodatnih isplata prihvata po vrsti (0063/0067).
+ * PO DANU: Dnevnica, Ispomoć, Radna subota, Noćni rad · PO SATU: Prekovremeni.
+ * Dnevnica koristi PER_EVENT jer njena vrsta isplate (DODATNA_DNEVNICA) ne
+ * dozvoljava PER_WORKED_DAY — obračun je isti: 1 označen dan = 1 jedinica.
+ */
 const RULE_UNIT: Record<string, string> = {
   DNEVNICA: 'PER_EVENT',
   ISPOMOC: 'PER_WORKED_DAY',
-  RADNA_SUBOTA: 'PER_HOUR',
+  RADNA_SUBOTA: 'PER_WORKED_DAY',
   PREKOVREMENI: 'PER_HOUR',
-  NOCNI_RAD: 'PER_HOUR',
+  NOCNI_RAD: 'PER_WORKED_DAY',
+};
+
+const UNIT_TEXT: Record<string, string> = {
+  PER_EVENT: 'po danu', PER_WORKED_DAY: 'po danu', PER_HOUR: 'po satu', FIXED: 'fiksno',
 };
 
 /**
@@ -33,6 +42,9 @@ export function AdminPayouts() {
     center: '', type: 'DNEVNICA', amount: '', from: '',
   });
   const [busy, setBusy] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const [filterCenter, setFilterCenter] = useState('');
+  const today = new Date().toISOString().slice(0, 10);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -87,9 +99,12 @@ export function AdminPayouts() {
     if (!cfg || !ctx) return [];
     return ctx.types.flatMap((t) => cfg.compensation_rules
       .filter((r) => r.payment_type_code === t.payment_type_code && r.active && !r.attendance_status
-        && (!r.valid_to || r.valid_to >= (ctx.cutover_date ?? '0000-00-00')))
-      .map((r) => ({ type: t, rule: r })));
-  }, [cfg, ctx]);
+        && (showHistory || !r.valid_to || r.valid_to >= today))
+      .map((r) => ({ type: t, rule: r })))
+      .filter((x) => !filterCenter || x.rule.center_id === filterCenter || (!x.rule.center_id && filterCenter === 'GLOBAL'))
+      .sort((a, b) => (a.rule.center_code ?? '').localeCompare(b.rule.center_code ?? '')
+        || a.type.name.localeCompare(b.type.name) || b.rule.valid_from.localeCompare(a.rule.valid_from));
+  }, [cfg, ctx, showHistory, filterCenter, today]);
 
   async function saveRate() {
     if (!cfg) return;
@@ -191,8 +206,9 @@ export function AdminPayouts() {
       <section className="control-section">
         <h2>Tarife po centru</h2>
         <p className="muted small">
-          Dnevnice i ispomoć: iznos po danu. Radna subota, prekovremeni i noćni rad: satnica.
-          Satnica radne subote može važiti tek od aktiviranog cutover datuma.
+          Dnevnica, Ispomoć, Radna subota i Noćni rad: iznos <strong>po danu</strong>. Prekovremeni:
+          iznos <strong>po satu</strong>. Nova tarifa važi od izabranog datuma; prethodna se
+          automatski zatvara dan ranije, a odobreni obračuni se ne menjaju.
         </p>
         <div className="report-filters">
           <label>Centar
@@ -206,7 +222,7 @@ export function AdminPayouts() {
               {ctx.types.map((t) => <option key={t.code} value={t.code}>{t.name}</option>)}
             </select>
           </label>
-          <label>{RULE_UNIT[rate.type] === 'PER_HOUR' ? 'Satnica (RSD/h)' : 'Iznos po danu (RSD)'}
+          <label>{RULE_UNIT[rate.type] === 'PER_HOUR' ? 'Iznos po satu (RSD)' : 'Iznos po danu (RSD)'}
             <input inputMode="decimal" value={rate.amount} onChange={(e) => setRate({ ...rate, amount: e.target.value })} />
           </label>
           <label>Važi od
@@ -218,21 +234,35 @@ export function AdminPayouts() {
           </button>
         </div>
 
+        <div className="filter-row">
+          <label>Centar{' '}
+            <select value={filterCenter} onChange={(e) => setFilterCenter(e.target.value)}>
+              <option value="">svi</option>
+              <option value="GLOBAL">(globalno)</option>
+              {cfg.centers.map((c) => <option key={c.id} value={c.id}>{c.code}</option>)}
+            </select>
+          </label>
+          <label className="confirm-row">
+            <input type="checkbox" checked={showHistory} onChange={(e) => setShowHistory(e.target.checked)} />
+            <span>Prikaži istoriju (i zatvorene tarife)</span>
+          </label>
+        </div>
         <table className="list list-compact">
           <thead>
-            <tr><th>Vrsta</th><th>Centar</th><th>Jedinica</th><th className="num">Iznos</th><th>Od</th><th>Do</th></tr>
+            <tr><th>Vrsta</th><th>Centar</th><th>Jedinica</th><th className="num">Iznos</th><th>Od</th><th>Do</th><th>Verzija</th></tr>
           </thead>
           <tbody>
-            {rateRows.length === 0 && <tr><td colSpan={6} className="muted">Nema unetih tarifa.</td></tr>}
+            {rateRows.length === 0 && <tr><td colSpan={7} className="muted">Nema unetih tarifa.</td></tr>}
             {rateRows.map(({ type, rule }) => (
               <tr key={rule.id} className={RULE_UNIT[type.code] !== rule.unit_type ? 'row-muted' : ''}
-                title={RULE_UNIT[type.code] !== rule.unit_type ? 'Jedinica ne odgovara novom modelu; važi samo za stari grid' : undefined}>
+                title={RULE_UNIT[type.code] !== rule.unit_type ? 'Jedinica ne odgovara dodatnim isplatama (staro pravilo grida)' : undefined}>
                 <td>{type.name}</td>
                 <td>{rule.center_code ?? '(globalno)'}</td>
-                <td>{rule.unit_type}</td>
-                <td className="num">{formatRsd(rule.amount)}</td>
+                <td>{UNIT_TEXT[rule.unit_type] ?? rule.unit_type}</td>
+                <td className="num">{formatRsd(rule.amount)} RSD</td>
                 <td>{rule.valid_from}</td>
                 <td>{rule.valid_to ?? '—'}</td>
+                <td>v{rule.version}{!rule.valid_to || rule.valid_to >= today ? '' : ' · zatvorena'}</td>
               </tr>
             ))}
           </tbody>

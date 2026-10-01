@@ -1703,7 +1703,7 @@ export interface AdminReadiness {
 // api.rpc_get_entry_eligibility (0059) — dozvoljeni dani unosa po zaposlenom
 // ---------------------------------------------------------------------------
 
-export type EligibilityLockReason = 'NOT_EMPLOYED' | 'NO_ASSIGNMENT' | 'OTHER_CENTER';
+export type EligibilityLockReason = 'NOT_EMPLOYED' | 'NO_ASSIGNMENT' | 'OTHER_CENTER' | 'NO_BASE_TYPE';
 
 export interface EligibilityDay {
   employee_id: Uuid;
@@ -2000,4 +2000,91 @@ export interface PayoutDuplicateMatch {
   active: boolean;
   match_reason: 'EXACT_CODE' | 'EXACT_NAME' | 'SIMILAR_NAME';
   score: number;
+}
+
+// ---------------------------------------------------------------------------
+// Uvoz zaposlenih kroz staging (0068)
+// ---------------------------------------------------------------------------
+
+export type ImportMatchStatus = 'MATCHED' | 'AMBIGUOUS' | 'POSSIBLE' | 'NEW';
+export type ImportResolution = 'PENDING' | 'LINKED' | 'CREATED' | 'DISMISSED';
+
+export interface ImportCandidate {
+  id: Uuid;
+  full_name: string;
+  employee_code: string | null;
+  center_code: string | null;
+  score: number;
+  exact: boolean;
+}
+
+export interface ImportStagingRow {
+  id: Uuid;
+  batch: string;
+  source_row: number;
+  source_full_name: string;
+  source_center_code: string | null;
+  center_code: string | null;
+  center_id: Uuid | null;
+  source_transport: string | null;
+  transport_required: boolean | null;
+  transport_provider_id: Uuid | null;
+  transport_provider_code: string | null;
+  source_main_shift: string | null;
+  shift_template_id: Uuid | null;
+  /** Avgustovski izvorni red — samo referenca, nije master podatak. */
+  source_payload: Record<string, unknown>;
+  match_status: ImportMatchStatus;
+  matched_employee_id: Uuid | null;
+  candidates: ImportCandidate[];
+  resolution: ImportResolution;
+  resolved_employee_id: Uuid | null;
+  resolved_at: string | null;
+  resolution_note: string | null;
+  resolved_by: string | null;
+}
+
+export interface ImportStagingList {
+  items: ImportStagingRow[];
+  /** ključ „MATCH_STATUS:RESOLUTION" → broj */
+  summary: Record<string, number>;
+}
+
+export interface ImportCreateInput {
+  id: Uuid;
+  employee_code: string | null;
+  first_name: string;
+  last_name: string;
+  employment_start_date: IsoDate;
+  center_id: Uuid;
+  primary_payment_type_id: Uuid;
+  default_shift_template_id: Uuid | null;
+  transport_required: boolean;
+  transport_provider_id: Uuid | null;
+  transport_valid_from: IsoDate | null;
+  confirm_similar: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// 0070 — zaposleni bez Karnet/Obuka, masovna dodela, Admin datumi zaposlenja
+// ---------------------------------------------------------------------------
+
+export interface EmployeeWithoutBaseType {
+  employee_id: Uuid;
+  full_name: string;
+  employee_code: string | null;
+  active: boolean;
+  employment_start_date: IsoDate;
+  employment_end_date: IsoDate | null;
+  assignment_id: Uuid;
+  center_id: Uuid;
+  center_code: string;
+  assignment_valid_from: IsoDate;
+  assignment_valid_to: IsoDate | null;
+}
+
+export interface BulkAssignResult {
+  assigned: number;
+  failed: number;
+  results: Array<{ employee_id: Uuid; full_name: string | null; ok: boolean; message?: string }>;
 }

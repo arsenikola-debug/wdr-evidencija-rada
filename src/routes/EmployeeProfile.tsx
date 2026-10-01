@@ -13,7 +13,10 @@ import { useAuth } from '../lib/auth/AuthProvider';
 
 /** `/zaposleni/:id` — matični podaci, istorija i kontrolisane radnje. */
 export function EmployeeProfile() {
-  const { api } = useAuth();
+  const { api, can } = useAuth();
+  // 0070: Admin menja datume uz jasnu poruku o sukobu sa raspodelom/prevozom.
+  const isMasterAdmin = can('centers.manage') && can('employee.assign_center');
+  const [alignDates, setAlignDates] = useState(false);
   const { id } = useParams<{ id: string }>();
 
   const [p, setP] = useState<Profile | null>(null);
@@ -143,14 +146,22 @@ export function EmployeeProfile() {
               className="btn"
               disabled={busy}
               onClick={() => void run(
-                () => api.setEmploymentDates(
-                  e.id, draft.start ?? e.employment_start_date, draft.end || null,
-                ),
-                'Datumi radnog odnosa su sačuvani.',
+                () => (isMasterAdmin
+                  ? api.adminSetEmploymentDates(
+                      e.id, draft.start ?? e.employment_start_date, draft.end || null, alignDates)
+                  : api.setEmploymentDates(
+                      e.id, draft.start ?? e.employment_start_date, draft.end || null)),
+                'Datumi radnog odnosa su sačuvani. Odobreni obračuni se ne menjaju.',
               )}
             >
               Sačuvaj datume
             </button>
+            {isMasterAdmin && (
+              <label className="confirm-row" title="Ako je novi početak posle početka raspodele ili prevoza, pomeri i njihov početak na novi datum">
+                <input type="checkbox" checked={alignDates} onChange={(ev) => setAlignDates(ev.target.checked)} />
+                <span>Uskladi početak raspodele i prevoza</span>
+              </label>
+            )}
             <button
               type="button"
               className="btn"

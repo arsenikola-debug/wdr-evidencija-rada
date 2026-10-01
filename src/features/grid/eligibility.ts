@@ -34,6 +34,7 @@ export const LOCK_REASON_TEXT: Record<EligibilityLockReason, string> = {
   NOT_EMPLOYED: 'zaposleni tog dana nije u radnom odnosu',
   NO_ASSIGNMENT: 'zaposleni tog dana nije raspoređen ni u jedan centar',
   OTHER_CENTER: 'zaposleni je tog dana raspoređen u drugi centar',
+  NO_BASE_TYPE: 'zaposleni još nema dodeljen Karnet/Obuka (dodeljuje administrator)',
 };
 
 export function buildEligibilityIndex(e: EntryEligibility | null): EligibilityIndex {

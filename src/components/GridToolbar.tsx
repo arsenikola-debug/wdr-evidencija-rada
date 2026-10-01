@@ -1,14 +1,17 @@
-import type { AttendanceStatusCode, GridPayload, SubmissionListItem } from '../lib/api/types';
+import type { AttendanceStatusCode, GridPayload } from '../lib/api/types';
 import type { CompletionSummary, ExpectedDaysMode } from '../features/grid/completion';
 import { EXPECTED_MODE_LABEL } from '../features/grid/completion';
 import { selectionSize, type Selection } from '../features/grid/selection';
 import { SaveIndicator, StatusBadge } from './Bits';
 
+/**
+ * Alati grida osnovnog Karnet/Obuka Unosa. Kontekst (centar, period, Karnet/Obuka)
+ * bira se ISKLJUČIVO u EntryBar-u iznad — ovde nema izbora perioda ni centra.
+ * Osnovni Unos NIKADA ne prikazuje dodatne isplate (Ispomoć, Prekovremeni, …),
+ * ni pre ni posle cutover-a: one pripadaju modulu Dodatne isplate.
+ */
 export function GridToolbar({
   payload,
-  submissions,
-  selectedSubmissionId,
-  onSelectSubmission,
   selection,
   editable,
   completion,
@@ -20,15 +23,9 @@ export function GridToolbar({
   onApplyShift,
   onClear,
   onCopyDay,
-  onCopyWeek,
   onOpenPreview,
-  onAssistance,
-  onOvertime,
 }: {
   payload: GridPayload;
-  submissions: SubmissionListItem[];
-  selectedSubmissionId: string;
-  onSelectSubmission(id: string): void;
   selection: Selection;
   editable: boolean;
   completion: CompletionSummary | null;
@@ -40,50 +37,14 @@ export function GridToolbar({
   onApplyShift(index: number): void;
   onClear(): void;
   onCopyDay(): void;
-  onCopyWeek(): void;
   onOpenPreview(): void;
-  onAssistance(): void;
-  onOvertime?(): void;
 }) {
-  const centers = Array.from(
-    new Map(submissions.map((s) => [s.center_id, { id: s.center_id, code: s.center_code }])).values(),
-  );
-  const current = submissions.find((s) => s.id === selectedSubmissionId);
-  const centerSubmissions = submissions.filter((s) => s.center_id === current?.center_id);
   const n = selectionSize(selection);
 
   return (
     <div className="toolbar">
       {/* --- kontekst: šta se uređuje ------------------------------------- */}
       <div className="tb-row tb-row-main">
-        <label className="tb-field">
-          <span>Centar</span>
-          <select
-            value={current?.center_id ?? ''}
-            onChange={(e) => {
-              const first = submissions.find((s) => s.center_id === e.target.value);
-              if (first) onSelectSubmission(first.id);
-            }}
-          >
-            {centers.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.code}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label className="tb-field">
-          <span>Period</span>
-          <select value={selectedSubmissionId} onChange={(e) => onSelectSubmission(e.target.value)}>
-            {centerSubmissions.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.period_label}
-              </option>
-            ))}
-          </select>
-        </label>
-
         <StatusBadge status={payload.submission.status} />
 
         {!editable && (
@@ -155,28 +116,15 @@ export function GridToolbar({
 
         <span className="tb-divider" aria-hidden />
 
-        <div className="tb-group" role="group" aria-label="Dodatne akcije">
-          <span className="tb-group-label">Dodatno</span>
+        <div className="tb-group" role="group" aria-label="Alati">
+          <span className="tb-group-label">Alati</span>
           <div className="tb-buttons">
             <button type="button" className="btn" disabled={!editable} onClick={onCopyDay} title="Ctrl + D">
               Kopiraj prethodni dan
             </button>
-            <button type="button" className="btn" disabled={!editable} onClick={onCopyWeek} title="Ctrl + Shift + D">
-              Kopiraj prethodnu nedelju
-            </button>
-            <button type="button" className="btn" disabled={!editable} onClick={onAssistance}>
-              Ispomoć…
-            </button>
-            <button
-              type="button"
-              className="btn"
-              disabled={!editable || !onOvertime}
-              onClick={onOvertime}
-            >
-              Prekovremeni…
-            </button>
           </div>
         </div>
+
 
         <span className="tb-spacer" />
 

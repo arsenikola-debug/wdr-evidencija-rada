@@ -95,7 +95,6 @@ export interface UseGridResult {
   applyShiftIndexToSelection(index: number): void;
   clearSelection(): void;
   copyPreviousDay(): void;
-  copyPreviousWeek(): void;
 
   /** „Nije radio ceo period" — stanje opcije za zaposlenog. */
   notWorkingState(employeeId: Uuid): WholePeriodState;
@@ -475,7 +474,6 @@ export function useGrid(api: WdrApi, submissionId: Uuid | null): UseGridResult {
     applyShiftIndexToSelection,
     clearSelection,
     copyPreviousDay: () => copyOffset(1),
-    copyPreviousWeek: () => copyOffset(7),
     notWorkingState,
     toggleNotWorkingWholePeriod,
   };

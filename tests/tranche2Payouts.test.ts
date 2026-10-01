@@ -69,26 +69,28 @@ describe('tok dodatne isplate (mock ogleda 0063)', () => {
     for (const day of ['2026-07-13', '2026-07-14']) {
       x = await op.payoutSetLine({ request_id: d.request.id, employee_id: 'e1', work_date: day, units: 1 });
     }
-    expect(x.summary.find((s) => s.employee_id === 'e1')).toMatchObject({ days: 2, amount: 3000 });
+    expect(x.summary.find((s) => s.employee_id === 'e1')).toMatchObject({ days: 2, amount: 8000 });
     expect(dayAvailable(x, 'e1', '2026-07-15')).toBe(true);
   });
 
-  it('radna subota samo subotom; noćni rad preko ponoći', async () => {
+  it('radna subota i noćni rad po DANU, bez vremena (finalno pravilo 0067)', async () => {
     const op = await as('operator');
     const rs = await op.payoutOpen('RADNA_SUBOTA', B6, '2026-07-13', '2026-07-19');
     await op.payoutSetEmployees(rs.request.id, ['e1']);
     await expect(op.payoutSetLine({ request_id: rs.request.id, employee_id: 'e1',
-      work_date: '2026-07-15', time_from: '08:00', time_to: '14:00' }))
-      .rejects.toMatchObject({ code: 'PAYOUT_NOT_SATURDAY' });
-    const sat = await op.payoutSetLine({ request_id: rs.request.id, employee_id: 'e1',
-      work_date: '2026-07-18', time_from: '08:00', time_to: '13:30' });
-    expect(sat.lines[0]).toMatchObject({ units: 5.5, amount: 3300 });
+      work_date: '2026-07-18', time_from: '08:00', time_to: '13:30' }))
+      .rejects.toMatchObject({ code: 'PAYOUT_TIME_NOT_ALLOWED' });
+    const sat = await op.payoutSetLine({ request_id: rs.request.id, employee_id: 'e1', work_date: '2026-07-18', units: 1 });
+    expect(sat.lines[0]).toMatchObject({ units: 1, amount: 4000 });
 
     const nr = await op.payoutOpen('NOCNI_RAD', B6, '2026-07-13', '2026-07-19');
     await op.payoutSetEmployees(nr.request.id, ['e2']);
-    const n = await op.payoutSetLine({ request_id: nr.request.id, employee_id: 'e2',
-      work_date: '2026-07-13', time_from: '22:30', time_to: '03:30' });
-    expect(n.lines[0]).toMatchObject({ units: 5, crosses_midnight: true, amount: 1500 });
+    await expect(op.payoutSetLine({ request_id: nr.request.id, employee_id: 'e2',
+      work_date: '2026-07-13', time_from: '22:30', time_to: '03:30' }))
+      .rejects.toMatchObject({ code: 'PAYOUT_TIME_NOT_ALLOWED' });
+    let n = await op.payoutSetLine({ request_id: nr.request.id, employee_id: 'e2', work_date: '2026-07-13', units: 1 });
+    n = await op.payoutSetLine({ request_id: nr.request.id, employee_id: 'e2', work_date: '2026-07-14', units: 1 });
+    expect(n.totals.amount).toBe(8000);
   });
 
   it('poslat zahtev nije izmenljiv; operater ne odobrava; korekcija tek posle odobrenja', async () => {
