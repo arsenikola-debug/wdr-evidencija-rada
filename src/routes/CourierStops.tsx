@@ -20,6 +20,7 @@ interface StopContext {
 import { CourierStopCorrections } from './CourierStopCorrections';
 import { EmployeePicker } from '../components/EmployeePicker';
 import { useAuth } from '../lib/auth/AuthProvider';
+import { Link } from 'react-router-dom';
 
 /**
  * „Stopovi kurira" — ZASEBNA evidencija.
@@ -164,6 +165,7 @@ export function CourierStops() {
     <div className="page">
       <div className="preview-head">
         <div>
+          <p className="small"><Link to="/dodatne-isplate">← Dodatne isplate</Link></p>
           <h1>Stopovi kurira</h1>
           <p className="muted">Operater unosi broj stopova; cenu i iznos računa server.</p>
         </div>

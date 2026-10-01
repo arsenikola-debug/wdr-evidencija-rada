@@ -164,13 +164,13 @@ export function AdminImport() {
           Redovi uvoza
         </button>
         <button type="button" className={view === 'bulk' ? 'btn seg-active' : 'btn'} onClick={() => setView('bulk')}>
-          Bez Karnet/Obuka
+          Neopredeljeni (bez Karnet/Obuka)
         </button>
       </div>
 
       {view === 'bulk' && (
         <section className="control-section">
-          <h2>Zaposleni bez Karnet/Obuka</h2>
+          <h2>Neopredeljeni zaposleni (bez Karnet/Obuka)</h2>
           <p className="muted small">
             Ovi zaposleni postoje i raspoređeni su u centar, ali se ne pojavljuju u Unosu dok ne
             dobiju osnovnu vrstu. Dodela je temporalna: važi od izabranog datuma; postojeća
