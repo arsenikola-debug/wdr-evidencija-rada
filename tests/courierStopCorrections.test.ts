@@ -51,8 +51,10 @@ describe('mock: pun tok korekcije', () => {
     await api.signIn('finansije@wdr.local', 'demo');
     const ctx = await api.courierStopContext() as { employees: Array<{ id: string }> };
     const sub = await api.courierStopOpenSubmission(
-      '55555555-5555-5555-5555-555555555501',
-      '10000000-0000-0000-0000-0000000000b6') as { id: string };
+      '10000000-0000-0000-0000-0000000000b6',
+      '2026-07-06',
+      '2026-07-12',
+    ) as { id: string };
     await api.courierStopSetEntry(sub.id, ctx.employees[0].id, '2026-07-06', 100);
     await api.courierStopSubmit(sub.id);
     await api.courierStopFinanceApprove(sub.id);
@@ -148,8 +150,10 @@ describe('mock BA poštuje filtere', () => {
     await api.signIn('finansije@wdr.local', 'demo');
     const ctx = await api.courierStopContext() as { employees: Array<{ id: string }> };
     const sub = await api.courierStopOpenSubmission(
-      '55555555-5555-5555-5555-555555555501',
-      '10000000-0000-0000-0000-0000000000b6') as { id: string };
+      '10000000-0000-0000-0000-0000000000b6',
+      '2026-07-06',
+      '2026-07-12',
+    ) as { id: string };
     await api.courierStopSetEntry(sub.id, ctx.employees[0].id, '2026-07-06', 100);
     await api.courierStopSubmit(sub.id);
     await api.courierStopFinanceApprove(sub.id);

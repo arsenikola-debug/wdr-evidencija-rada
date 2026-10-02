@@ -59,7 +59,7 @@ describe('K13 — globalni payout picker', () => {
       expect(x.employees.map((e) => e.employee_id), t).toContain(OTHER);
       expect(x.employees.find((e) => e.employee_id === OTHER)?.full_name).toBe('Arsenović Nikola');
     }
-    const sub = await api.courierStopOpenSubmission('p1', B6) as { id: string };
+    const sub = await api.courierStopOpenSubmission(B6, '2026-07-06', '2026-07-12') as { id: string };
     await expect(api.courierStopSetEntry(sub.id, OTHER, '2026-07-06', 10)).resolves.toBeTruthy();
   });
 

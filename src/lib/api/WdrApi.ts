@@ -172,7 +172,9 @@ export interface WdrApi {
   baCourierStops(
     from?: IsoDate | null, to?: IsoDate | null, centerIds?: Uuid[] | null,
   ): Promise<unknown>;
-  courierStopOpenSubmission(periodId: Uuid, centerId: Uuid): Promise<unknown>;
+  courierStopOpenSubmission(
+    centerId: Uuid, periodStart: IsoDate, periodEnd: IsoDate,
+  ): Promise<unknown>;
   courierStopSetEntry(
     submissionId: Uuid, employeeId: Uuid, workDate: IsoDate, stopCount: number,
   ): Promise<unknown>;

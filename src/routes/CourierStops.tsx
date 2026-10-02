@@ -10,12 +10,16 @@ import type { CourierRow, CourierStopDetail } from '../features/courierStops/mod
 import { WdrApiError } from '../lib/api';
 
 interface CenterOption { id: string; code: string; name: string }
-interface PeriodOption { id: string; label: string; period_start: string; period_end: string }
 interface CourierOption { id: string; full_name: string; employee_code: string | null }
 interface StopContext {
   centers: CenterOption[];
-  periods: PeriodOption[];
   employees: CourierOption[];
+}
+
+function addDays(iso: string, days: number): string {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
 }
 import { CourierStopCorrections } from './CourierStopCorrections';
 import { EmployeePicker } from '../components/EmployeePicker';
@@ -34,9 +38,9 @@ export function CourierStops() {
   const { api, can } = useAuth();
 
   const [centers, setCenters] = useState<CenterOption[]>([]);
-  const [periods, setPeriods] = useState<PeriodOption[]>([]);
   const [centerId, setCenterId] = useState('');
-  const [periodId, setPeriodId] = useState('');
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
 
   const [detail, setDetail] = useState<CourierStopDetail | null>(null);
   const [submissionId, setSubmissionId] = useState<string | null>(null);
@@ -62,7 +66,6 @@ export function CourierStops() {
       try {
         const ctx = await api.courierStopContext() as StopContext;
         setCenters(ctx.centers);
-        setPeriods(ctx.periods);
         if (ctx.centers.length === 1) setCenterId(ctx.centers[0].id);
       } catch (err) {
         fail(err);
@@ -82,12 +85,22 @@ export function CourierStops() {
   }, [api, fail]);
 
   const openSubmission = useCallback(async () => {
-    if (!centerId || !periodId) return;
+    if (!centerId || !from || !to) return;
+
+    if (to < from) {
+      setError('Datum „do" ne sme biti pre datuma „od".');
+      return;
+    }
+    if (to > addDays(from, 6)) {
+      setError('Period Stopova može imati najviše 7 kalendarskih dana.');
+      return;
+    }
+
     setError(null);
     setNotice(null);
     setBusy(true);
     try {
-      const sub = await api.courierStopOpenSubmission(periodId, centerId) as { id: string };
+      const sub = await api.courierStopOpenSubmission(centerId, from, to) as { id: string };
       setSubmissionId(sub.id);
       setExtraCouriers([]);
       await reload(sub.id);
@@ -96,7 +109,7 @@ export function CourierStops() {
     } finally {
       setBusy(false);
     }
-  }, [api, centerId, periodId, reload, fail]);
+  }, [api, centerId, from, to, reload, fail]);
 
   const dates = useMemo(
     () => (detail ? periodDates(detail.submission.period_start, detail.submission.period_end) : []),
@@ -186,15 +199,29 @@ export function CourierStops() {
             {centers.map((c) => <option key={c.id} value={c.id}>{c.code} — {c.name}</option>)}
           </select>
         </label>
-        <label><span>Period</span>
-          <select value={periodId} onChange={(e) => setPeriodId(e.target.value)}>
-            <option value="">—</option>
-            {periods.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
-          </select>
+        <label><span>Od</span>
+          <input
+            type="date"
+            value={from}
+            onChange={(e) => {
+              const next = e.target.value;
+              setFrom(next);
+              if (to && (to < next || to > addDays(next, 6))) setTo('');
+            }}
+          />
+        </label>
+        <label><span>Do</span>
+          <input
+            type="date"
+            value={to}
+            min={from || undefined}
+            max={from ? addDays(from, 6) : undefined}
+            onChange={(e) => setTo(e.target.value)}
+          />
         </label>
         <button
           type="button" className="btn btn-primary"
-          disabled={busy || !centerId || !periodId}
+          disabled={busy || !centerId || !from || !to}
           onClick={() => void openSubmission()}
         >
           Otvori evidenciju

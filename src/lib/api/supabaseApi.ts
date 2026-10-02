@@ -515,10 +515,13 @@ export class SupabaseWdrApi implements WdrApi {
     return this.rpc<unknown>('rpc_courier_stop_context', {});
   }
 
-  async courierStopOpenSubmission(periodId: Uuid, centerId: Uuid): Promise<unknown> {
+  async courierStopOpenSubmission(
+    centerId: Uuid, periodStart: IsoDate, periodEnd: IsoDate,
+  ): Promise<unknown> {
     return this.rpc<unknown>('rpc_courier_stop_open_submission', {
-      p_period_id: periodId,
       p_center_id: centerId,
+      p_period_start: periodStart,
+      p_period_end: periodEnd,
     });
   }
 

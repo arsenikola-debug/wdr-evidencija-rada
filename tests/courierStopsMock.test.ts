@@ -7,7 +7,6 @@ import { splitByMonth } from '../src/features/courierStops/model';
  * Sve monetarne vrednosti su DEMO (120 RSD/stop) i tako su i označene u kodu.
  */
 
-const PERIOD = '55555555-5555-5555-5555-555555555501';
 const CENTER = '10000000-0000-0000-0000-0000000000b6';
 
 type Detail = {
@@ -30,7 +29,7 @@ describe('Stopovi kurira — lokalni mock tok', () => {
       employees: Array<{ id: string }>; centers: Array<{ id: string }>;
     };
     courierId = ctx.employees[0].id;
-    const sub = await api.courierStopOpenSubmission(PERIOD, CENTER) as { id: string };
+    const sub = await api.courierStopOpenSubmission(CENTER, '2026-07-06', '2026-07-12') as { id: string };
     subId = sub.id;
   });
 
@@ -132,7 +131,7 @@ describe('Stopovi kurira u istoriji Finansija (mock)', () => {
     await api.signIn('finansije@wdr.local', 'demo');
     const ctx = await api.courierStopContext() as { employees: Array<{ id: string }> };
     courierId = ctx.employees[0].id;
-    const sub = await api.courierStopOpenSubmission(PERIOD, CENTER) as { id: string };
+    const sub = await api.courierStopOpenSubmission(CENTER, '2026-07-06', '2026-07-12') as { id: string };
     subId = sub.id;
   });
 

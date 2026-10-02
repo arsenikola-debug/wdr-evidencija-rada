@@ -2118,17 +2118,32 @@ export class MockWdrApi implements WdrApi {
     };
   }
 
-  async courierStopOpenSubmission(periodId: Uuid, centerId: Uuid) {
+  async courierStopOpenSubmission(
+    centerId: Uuid, periodStart: IsoDate, periodEnd: IsoDate,
+  ) {
     await delay(80);
     this.requireSession();
-    const key = `${periodId}|${centerId}`;
+
+    if (periodEnd < periodStart) {
+      throw new WdrApiError('Datum „do" ne sme biti pre datuma „od".', 'PERIOD_RANGE_INVALID');
+    }
+    const start = new Date(`${periodStart}T00:00:00Z`);
+    const end = new Date(`${periodEnd}T00:00:00Z`);
+    const days = Math.round((end.getTime() - start.getTime()) / 86400000) + 1;
+    if (days > 7) {
+      throw new WdrApiError(
+        'Period Stopova može imati najviše 7 kalendarskih dana.',
+        'PERIOD_RANGE_TOO_LONG',
+      );
+    }
+
+    const key = `${centerId}|${periodStart}|${periodEnd}`;
     let sub = this.stopState.submissions.get(key);
     if (!sub) {
-      const p = STOP_DEMO_PERIODS.find((x) => x.id === periodId);
       sub = {
-        id: key, center_id: centerId, period_id: periodId,
-        period_start: p?.period_start ?? '2026-07-06',
-        period_end: p?.period_end ?? '2026-07-12',
+        id: key, center_id: centerId, period_id: key,
+        period_start: periodStart,
+        period_end: periodEnd,
         status: 'DRAFT', return_reason: null, submitted_at: null, approved_at: null,
         approved_total: null, approved_stops: null,
       };
