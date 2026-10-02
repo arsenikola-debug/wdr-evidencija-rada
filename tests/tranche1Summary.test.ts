@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   employeeTotals,
+  fromPreviewLines,
   summarizeByEmployee,
   type SummaryLine,
 } from '../src/features/finance/employeeSummary';
@@ -46,5 +47,50 @@ describe('summarizeByEmployee', () => {
     const t = employeeTotals(lines);
     expect(t.get('marko')).toMatchObject({ amount: 12800, transportAmount: 0, blockedLines: 0 });
     expect(t.get('ana')).toMatchObject({ amount: 4000, transportAmount: 500 });
+  });
+
+  it('NOT_ELIGIBLE prevoz ne čini zaposlenog nepotpunim', () => {
+    const preview = fromPreviewLines([
+      {
+        work_entry_id: 'w1',
+        employee_id: 'marko',
+        employee_name: 'Marković Marko',
+        work_date: '2026-09-28',
+        line_kind: 'PRIMARY',
+        payment_type_code: 'KARNET',
+        basis: 'HOME_CENTER',
+        center_code: 'CM',
+        rule_id: 'r1',
+        rule_version: 1,
+        rate: 3900,
+        unit_type: 'PER_WORKED_DAY',
+        units: 1,
+        calculated_amount: 3900,
+        status: 'RESOLVED',
+      },
+      {
+        work_entry_id: 'w1',
+        employee_id: 'marko',
+        employee_name: 'Marković Marko',
+        work_date: '2026-09-28',
+        line_kind: 'TRANSPORT',
+        payment_type_code: null,
+        basis: 'ASSIGNMENT_OPT_OUT',
+        center_code: null,
+        rule_id: null,
+        rule_version: null,
+        rate: null,
+        unit_type: null,
+        units: 0,
+        calculated_amount: null,
+        status: 'NOT_ELIGIBLE',
+      },
+    ]);
+
+    expect(employeeTotals(preview).get('marko')).toMatchObject({
+      amount: 3900,
+      transportAmount: 0,
+      blockedLines: 0,
+    });
   });
 });

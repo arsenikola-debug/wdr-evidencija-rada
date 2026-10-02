@@ -73,7 +73,12 @@ export function fromPreviewLines(lines: PreviewLine[]): SummaryLine[] {
     line_kind: l.line_kind,
     payment_type_code: l.payment_type_code,
     units: l.units,
-    amount: l.status === 'RESOLVED' ? l.calculated_amount : null,
+    amount:
+      l.status === 'RESOLVED'
+        ? l.calculated_amount
+        : l.status === 'MISSING_RULE' || l.status === 'MISSING_PAYMENT_TYPE'
+          ? null
+          : 0,
   }));
 }
 
