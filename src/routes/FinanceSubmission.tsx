@@ -1,3 +1,4 @@
+import { BaseTypeChip } from '../components/BaseTypeChip';
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Banner, EmptyState, Spinner, StatusBadge } from '../components/Bits';
@@ -122,7 +123,7 @@ export function FinanceSubmission() {
       <div className="preview-head">
         <div>
           <h1>
-            {s.center_code} · {s.period_start} – {s.period_end} <StatusBadge status={s.status} />
+            {s.center_code} <BaseTypeChip type={s.base_type} /> · {s.period_start} – {s.period_end} <StatusBadge status={s.status} />
           </h1>
           <p className="muted">
             Poslao {s.submitted_by ?? '—'}

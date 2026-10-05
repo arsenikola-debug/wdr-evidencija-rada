@@ -17,6 +17,8 @@ import type {
   ImportStagingList,
   ImportStagingRow,
   PayoutContext,
+  PeriodSubmissionSlots,
+  SubmissionBaseType,
   PayoutDuplicateMatch,
   PayoutEmployeeSearchResult,
   PayoutDetail,
@@ -313,7 +315,8 @@ export class MockWdrApi implements WdrApi {
   async listSubmissions(): Promise<SubmissionListItem[]> {
     await delay(120);
     return [
-      { id: SUBMISSION_B6, center_id: CENTER_B6, center_code: 'B6', period_id: PERIOD, period_label: '2026-W28 (06.07–12.07)', period_start: '2026-07-06', period_end: '2026-07-12', status: this.status },
+      // DEMO: stara zajednička prijava (pre 0074) — oba tipa u jednoj prijavi.
+      { id: SUBMISSION_B6, center_id: CENTER_B6, center_code: 'B6', period_id: PERIOD, period_label: '2026-W28 (06.07–12.07)', period_start: '2026-07-06', period_end: '2026-07-12', status: this.status, base_type: null },
       ...this.createdSubmissions,
     ];
   }
@@ -328,8 +331,12 @@ export class MockWdrApi implements WdrApi {
     centerId: Uuid,
     periodStart: IsoDate,
     periodEnd: IsoDate,
+    baseType: SubmissionBaseType,
   ): Promise<CreatePeriodSubmissionResult> {
     await delay(200);
+    if (baseType !== 'KARNET' && baseType !== 'OBUKA') {
+      throw new WdrApiError('Izaberite KARNET ili OBUKA.', 'BASE_TYPE_REQUIRED');
+    }
 
     const session = await this.getSession();
     if (!session) throw new WdrApiError('Nije prijavljen korisnik.', '42501');
@@ -354,8 +361,19 @@ export class MockWdrApi implements WdrApi {
     }
 
     const existing = await this.listSubmissions();
+    // 0074: identitet = centar + period + tip. Stara zajednička (base_type null) pokriva oba.
+    const legacy = existing.find(
+      (x) => x.center_id === centerId && !x.base_type && x.period_start <= periodEnd && x.period_end >= periodStart,
+    );
+    if (legacy) {
+      throw new WdrApiError(
+        `Za centar ${legacy.center_code} postoji stara zajednička prijava ${legacy.period_start} – ${legacy.period_end}.`,
+        'PERIOD_LEGACY_COMBINED',
+      );
+    }
     const same = existing.find(
-      (x) => x.center_id === centerId && x.period_start === periodStart && x.period_end === periodEnd,
+      (x) => x.center_id === centerId && x.base_type === baseType
+        && x.period_start === periodStart && x.period_end === periodEnd,
     );
     if (same) {
       // Ponovni izbor istog raspona nije uvek nastavak rada — poslata i
@@ -368,11 +386,12 @@ export class MockWdrApi implements WdrApi {
         submission_id: same.id, center_id: same.center_id, center_code: same.center_code,
         period_id: same.period_id, period_label: same.period_label,
         period_start: same.period_start, period_end: same.period_end,
-        status: same.status, created: false,
+        status: same.status, created: false, base_type: baseType,
       };
     }
     const overlaps = existing.some(
-      (x) => x.center_id === centerId && x.period_start <= periodEnd && x.period_end >= periodStart,
+      (x) => x.center_id === centerId && x.base_type === baseType
+        && x.period_start <= periodEnd && x.period_end >= periodStart,
     );
     if (overlaps) {
       throw new WdrApiError(
@@ -390,6 +409,7 @@ export class MockWdrApi implements WdrApi {
       period_start: periodStart,
       period_end: periodEnd,
       status: 'DRAFT',
+      base_type: baseType,
     };
     this.createdSubmissions.push(item);
 
@@ -397,7 +417,28 @@ export class MockWdrApi implements WdrApi {
       submission_id: item.id, center_id: item.center_id, center_code: item.center_code,
       period_id: item.period_id, period_label: item.period_label,
       period_start: item.period_start, period_end: item.period_end,
-      status: 'DRAFT', created: true,
+      status: 'DRAFT', created: true, base_type: baseType,
+    };
+  }
+
+  async periodSubmissionSlots(
+    centerId: Uuid, periodStart: IsoDate, periodEnd: IsoDate,
+  ): Promise<PeriodSubmissionSlots> {
+    await delay(60);
+    const all = await this.listSubmissions();
+    return {
+      center_id: centerId, period_start: periodStart, period_end: periodEnd,
+      slots: all
+        .filter((x) => x.center_id === centerId && x.period_start <= periodEnd && x.period_end >= periodStart)
+        .map((x) => ({
+          submission_id: x.id,
+          base_type: x.base_type ?? 'LEGACY',
+          status: x.status,
+          period_start: x.period_start,
+          period_end: x.period_end,
+          exact: x.period_start === periodStart && x.period_end === periodEnd,
+          editable: x.status === 'DRAFT' || x.status === 'RETURNED' || x.status === 'READY_FOR_REVIEW',
+        })),
     };
   }
 
@@ -508,6 +549,7 @@ export class MockWdrApi implements WdrApi {
         period_start: item.period_start,
         period_end: item.period_end,
         status: item.status,
+        base_type: item.base_type ?? null,
         review_confirmed: false,
         editable: item.status === 'DRAFT' || item.status === 'RETURNED',
         can_write: true,
@@ -540,7 +582,9 @@ export class MockWdrApi implements WdrApi {
           { id: CENTER_BZ, code: 'BZ', name: 'Bežanija' },
         ],
       },
-      employees: EMPLOYEES.filter((e) => e.center_id === item.center_id).map((e) => ({
+      // 0074: tipizovana prijava prikazuje samo zaposlene svog tipa.
+      employees: EMPLOYEES.filter((e) => e.center_id === item.center_id
+        && (!item.base_type || e.primary_payment_type_code === item.base_type)).map((e) => ({
         employee_id: e.employee_id,
         full_name: e.full_name,
         employee_code: e.employee_code,

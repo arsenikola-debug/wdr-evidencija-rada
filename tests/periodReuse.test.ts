@@ -73,7 +73,7 @@ async function signedInMock(demoRates = false): Promise<MockWdrApi> {
 describe('MockWdrApi.createPeriodSubmission', () => {
   it('otvara nov raspon i vraća created=true', async () => {
     const api = await signedInMock();
-    const res = await api.createPeriodSubmission(CENTER_B6, '2026-10-01', '2026-10-07');
+    const res = await api.createPeriodSubmission(CENTER_B6, '2026-10-01', '2026-10-07', 'KARNET');
     expect(res.created).toBe(true);
     expect(res.status).toBe('DRAFT');
     expect(res.center_code).toBe('B6');
@@ -81,8 +81,8 @@ describe('MockWdrApi.createPeriodSubmission', () => {
 
   it('isti raspon u DRAFT-u vraća postojeću prijavu, bez duplikata', async () => {
     const api = await signedInMock();
-    const first = await api.createPeriodSubmission(CENTER_B6, '2026-10-01', '2026-10-07');
-    const again = await api.createPeriodSubmission(CENTER_B6, '2026-10-01', '2026-10-07');
+    const first = await api.createPeriodSubmission(CENTER_B6, '2026-10-01', '2026-10-07', 'KARNET');
+    const again = await api.createPeriodSubmission(CENTER_B6, '2026-10-01', '2026-10-07', 'KARNET');
     expect(again.created).toBe(false);
     expect(again.submission_id).toBe(first.submission_id);
 
@@ -127,17 +127,22 @@ describe('MockWdrApi.createPeriodSubmission', () => {
     const sent = await api.submitPeriod(seeded.id, true);
     expect(sent.incomplete_override).toBe(false);
 
+    // 0074: demo prijava je STARA ZAJEDNIČKA (Karnet + Obuka) — poslata pokriva oba
+    // tipa, pa se preko nje ne otvara ni nova KARNET ni nova OBUKA prijava.
     await expect(
-      api.createPeriodSubmission(CENTER_B6, seeded.period_start, seeded.period_end),
-    ).rejects.toMatchObject({ code: 'PERIOD_ALREADY_SUBMITTED' });
+      api.createPeriodSubmission(CENTER_B6, seeded.period_start, seeded.period_end, 'KARNET'),
+    ).rejects.toMatchObject({ code: 'PERIOD_LEGACY_COMBINED' });
+    await expect(
+      api.createPeriodSubmission(CENTER_B6, seeded.period_start, seeded.period_end, 'OBUKA'),
+    ).rejects.toMatchObject({ code: 'PERIOD_LEGACY_COMBINED' });
   });
 
   it('preklapanje sa DRUGIM rasponom daje PERIOD_OVERLAPS_EXISTING', async () => {
     const api = await signedInMock();
-    await api.createPeriodSubmission(CENTER_B6, '2026-10-01', '2026-10-07');
+    await api.createPeriodSubmission(CENTER_B6, '2026-10-01', '2026-10-07', 'KARNET');
 
     await expect(
-      api.createPeriodSubmission(CENTER_B6, '2026-10-05', '2026-10-11'),
+      api.createPeriodSubmission(CENTER_B6, '2026-10-05', '2026-10-11', 'KARNET'),
     ).rejects.toMatchObject({ code: 'PERIOD_OVERLAPS_EXISTING' });
   });
 
@@ -145,11 +150,11 @@ describe('MockWdrApi.createPeriodSubmission', () => {
     const api = await signedInMock();
 
     await expect(
-      api.createPeriodSubmission(CENTER_B6, '2026-11-10', '2026-11-01'),
+      api.createPeriodSubmission(CENTER_B6, '2026-11-10', '2026-11-01', 'KARNET'),
     ).rejects.toMatchObject({ code: 'PERIOD_RANGE_INVALID' });
 
     await expect(
-      api.createPeriodSubmission(CENTER_B6, '2026-11-01', '2026-11-08'),
+      api.createPeriodSubmission(CENTER_B6, '2026-11-01', '2026-11-08', 'KARNET'),
     ).rejects.toMatchObject({ code: 'PERIOD_RANGE_TOO_LONG' });
   });
 
@@ -160,6 +165,7 @@ describe('MockWdrApi.createPeriodSubmission', () => {
         '10000000-0000-0000-0000-0000000000b2',
         '2026-12-01',
         '2026-12-07',
+        'KARNET',
       ),
     ).rejects.toBeInstanceOf(WdrApiError);
   });

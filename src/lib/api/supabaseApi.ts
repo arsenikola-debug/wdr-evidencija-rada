@@ -15,6 +15,8 @@ import type {
   ImportStagingList,
   ImportStagingRow,
   PayoutContext,
+  PeriodSubmissionSlots,
+  SubmissionBaseType,
   PayoutDuplicateMatch,
   PayoutEmployeeSearchResult,
   PayoutDetail,
@@ -263,7 +265,7 @@ export class SupabaseWdrApi implements WdrApi {
     let q = this.rest
       .from('period_submissions')
       .select(
-        'id, center_id, period_id, period_start, period_end, status, centers(code), submission_periods(label)',
+        'id, center_id, period_id, period_start, period_end, status, centers(code), submission_periods(label), base_payment_type_id, payment_types(code)',
       )
       .order('period_start', { ascending: false });
 
@@ -311,6 +313,11 @@ export class SupabaseWdrApi implements WdrApi {
       period_end: r.period_end as string,
       status: r.status as SubmissionListItem['status'],
       return_reason: returnReasons.get(r.id as string) ?? null,
+      // 0074: KARNET/OBUKA; null = stara zajednička prijava.
+      base_type: r.base_payment_type_id
+        ? ((firstOf(r.payment_types as { code?: string } | { code?: string }[] | null)?.code ?? null) as
+            SubmissionListItem['base_type'])
+        : null,
     }));
   }
 
@@ -323,12 +330,14 @@ export class SupabaseWdrApi implements WdrApi {
     centerId: Uuid,
     periodStart: IsoDate,
     periodEnd: IsoDate,
+    baseType: SubmissionBaseType,
   ): Promise<CreatePeriodSubmissionResult> {
     try {
       return await this.rpc<CreatePeriodSubmissionResult>('rpc_create_period_submission', {
         p_center_id: centerId,
         p_period_start: periodStart,
         p_period_end: periodEnd,
+        p_base_type: baseType,
       });
     } catch (err) {
       if (err instanceof WdrApiError) {
@@ -345,6 +354,14 @@ export class SupabaseWdrApi implements WdrApi {
       }
       throw err;
     }
+  }
+
+  async periodSubmissionSlots(
+    centerId: Uuid, periodStart: IsoDate, periodEnd: IsoDate,
+  ): Promise<PeriodSubmissionSlots> {
+    return this.rpc<PeriodSubmissionSlots>('rpc_period_submission_slots', {
+      p_center_id: centerId, p_period_start: periodStart, p_period_end: periodEnd,
+    });
   }
 
   // --- daily entry ---------------------------------------------------------

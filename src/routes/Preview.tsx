@@ -1,3 +1,4 @@
+import { BaseTypeChip } from '../components/BaseTypeChip';
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Banner, EmptyState, Spinner } from '../components/Bits';
@@ -119,7 +120,7 @@ export function Preview() {
         <div>
           <h1>Pregled pre slanja</h1>
           <p className="muted">
-            Centar {data.submission.center_code} · period {data.submission.period_start} –{' '}
+            Centar {data.submission.center_code} <BaseTypeChip type={data.submission.base_type} /> · period {data.submission.period_start} –{' '}
             {data.submission.period_end}
           </p>
         </div>

@@ -1,3 +1,4 @@
+import { BaseTypeChip } from '../components/BaseTypeChip';
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Banner, EmptyState, Spinner, StatusBadge } from '../components/Bits';
@@ -125,7 +126,7 @@ export function FinanceQueue() {
                     className={needsAttention(it) ? 'row-error' : ''}
                   >
                     <td>
-                      <strong>{it.center_code}</strong>
+                      <strong>{it.center_code}</strong> <BaseTypeChip type={it.base_type} />
                       <span className="muted small"> {it.center_name}</span>
                     </td>
                     <td>

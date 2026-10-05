@@ -151,9 +151,9 @@ describe('MockWdrApi.createPeriodSubmission — najviše 7 dana', () => {
     const api = new MockWdrApi({ role: 'operator' });
     await api.signIn('operater@wdr.local', 'mock1234');
     await expect(
-      api.createPeriodSubmission('10000000-0000-0000-0000-0000000000b6', '2026-12-07', '2026-12-14'),
+      api.createPeriodSubmission('10000000-0000-0000-0000-0000000000b6', '2026-12-07', '2026-12-14', 'KARNET'),
     ).rejects.toMatchObject({ code: 'PERIOD_RANGE_TOO_LONG' });
-    const ok = await api.createPeriodSubmission('10000000-0000-0000-0000-0000000000b6', '2026-12-07', '2026-12-13');
+    const ok = await api.createPeriodSubmission('10000000-0000-0000-0000-0000000000b6', '2026-12-07', '2026-12-13', 'KARNET');
     expect(ok.created).toBe(true);
   });
 });

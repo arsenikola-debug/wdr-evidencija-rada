@@ -37,9 +37,16 @@ const MESSAGES: Record<string, string> = {
   PERIOD_NOT_OPEN: 'Period je zatvoren za unos.',
   PERIOD_RANGE_REQUIRED: 'Period mora imati početni i krajnji datum.',
   PERIOD_RANGE_INVALID: 'Datum „do" ne sme biti pre datuma „od".',
-  PERIOD_RANGE_TOO_LONG: 'Raspon je duži od 62 dana. Podelite ga na više perioda.',
+  PERIOD_RANGE_TOO_LONG: 'Period može imati najviše 7 kalendarskih dana.',
   PERIOD_OVERLAPS_EXISTING:
-    'Za taj centar već postoji prijava koja se preklapa sa izabranim rasponom.',
+    'Za taj centar već postoji prijava istog tipa (Karnet/Obuka) koja se preklapa sa izabranim rasponom.',
+  // 0074 — KARNET i OBUKA su zasebne prijave.
+  BASE_TYPE_REQUIRED: 'Izaberite Karnet ili Obuka — svaka ima svoju prijavu.',
+  PERIOD_LEGACY_COMBINED:
+    'Za ovaj period postoji stara zajednička prijava (Karnet + Obuka). Otvorite nju; nova se ne pravi preko nje.',
+  SUBMISSION_BASE_TYPE_MISMATCH:
+    'Taj dan pripada drugom osnovnom tipu (Karnet/Obuka) i unosi se u njegovoj prijavi.',
+  SUBMISSION_BASE_TYPE_IMMUTABLE: 'Osnovni tip prijave se ne menja.',
   PERIOD_ALREADY_SUBMITTED:
     'Period za taj centar i raspon je već poslat finansijama. Nov unos se ne otvara.',
   PERIOD_LOCKED_APPROVED:

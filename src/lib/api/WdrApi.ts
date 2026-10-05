@@ -12,6 +12,8 @@ import type {
   ImportStagingList,
   ImportStagingRow,
   PayoutContext,
+  PeriodSubmissionSlots,
+  SubmissionBaseType,
   PayoutDuplicateMatch,
   PayoutEmployeeSearchResult,
   PayoutDetail,
@@ -99,7 +101,14 @@ export interface WdrApi {
     centerId: Uuid,
     periodStart: IsoDate,
     periodEnd: IsoDate,
+    /** 0074: KARNET i OBUKA su zasebne prijave za isti centar i period. */
+    baseType: SubmissionBaseType,
   ): Promise<CreatePeriodSubmissionResult>;
+  /**
+   * 0074: prijave centra koje se preklapaju sa periodom (KARNET, OBUKA, stara
+   * zajednička) sa statusom — da Unos otvori pravu prijavu bez ID-ja.
+   */
+  periodSubmissionSlots(centerId: Uuid, periodStart: IsoDate, periodEnd: IsoDate): Promise<PeriodSubmissionSlots>;
 
   // --- daily entry ---------------------------------------------------------
   getGrid(submissionId: Uuid): Promise<GridPayload>;

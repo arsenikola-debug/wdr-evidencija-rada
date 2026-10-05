@@ -1,3 +1,4 @@
+import { BaseTypeChip } from '../components/BaseTypeChip';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../lib/auth/AuthProvider';
@@ -167,7 +168,7 @@ export function MySubmissions() {
               return (
                 <tr key={s.id} className={s.status === 'RETURNED' ? 'row-error' : ''}>
                   <td>
-                    <strong>{s.center_code}</strong>
+                    <strong>{s.center_code}</strong> <BaseTypeChip type={s.base_type} />
                   </td>
                   <td>
                     <span className="period-range">

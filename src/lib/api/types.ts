@@ -38,6 +38,8 @@ export interface GridSubmission {
   id: Uuid;
   center_id: Uuid;
   center_code: string;
+  /** 0074: KARNET / OBUKA; null = stara zajednička prijava. */
+  base_type?: SubmissionBaseType | null;
   center_name: string;
   period_id: Uuid;
   period_start: IsoDate;
@@ -384,6 +386,8 @@ export interface SubmissionPreview {
     id: Uuid;
     center_id: Uuid;
     center_code: string;
+  /** 0074: KARNET / OBUKA; null = stara zajednička prijava. */
+  base_type?: SubmissionBaseType | null;
     period_start: IsoDate;
     period_end: IsoDate;
     status: SubmissionStatus;
@@ -461,6 +465,34 @@ export interface SubmissionListItem {
   status: SubmissionStatus;
   /** Poslednji Finance komentar dok je prijava RETURNED. */
   return_reason?: string | null;
+  /**
+   * 0074: osnovni tip prijave. KARNET i OBUKA su dve nezavisne prijave za isti
+   * centar i period; `null` = stara zajednička prijava (pre 0074, oba tipa).
+   */
+  base_type?: SubmissionBaseType | null;
+}
+
+/** 0074 — osnovni tip prijave (deo identiteta: centar + period + tip). */
+export type SubmissionBaseType = 'KARNET' | 'OBUKA';
+
+/** 0074 — prijava centra koja se preklapa sa izabranim periodom. */
+export interface PeriodSubmissionSlot {
+  submission_id: Uuid;
+  /** LEGACY = stara zajednička prijava (oba tipa). */
+  base_type: SubmissionBaseType | 'LEGACY';
+  status: SubmissionStatus;
+  period_start: IsoDate;
+  period_end: IsoDate;
+  /** Tačno isti raspon kao izbor u traci. */
+  exact: boolean;
+  editable: boolean;
+}
+
+export interface PeriodSubmissionSlots {
+  center_id: Uuid;
+  period_start: IsoDate;
+  period_end: IsoDate;
+  slots: PeriodSubmissionSlot[];
 }
 
 /**
@@ -477,6 +509,10 @@ export interface CreatePeriodSubmissionResult {
   period_end: IsoDate;
   status: SubmissionStatus;
   created: boolean;
+  /** 0074: tip otvorene prijave. */
+  base_type?: SubmissionBaseType;
+  /** 0074: prazna stara zajednička prijava istog raspona je dobila ovaj tip. */
+  adopted?: boolean;
 }
 
 export interface NotificationItem {
@@ -609,6 +645,8 @@ export interface FinanceQueueItem {
   submission_id: Uuid;
   center_id: Uuid;
   center_code: string;
+  /** 0074: KARNET / OBUKA; null = stara zajednička prijava. */
+  base_type?: SubmissionBaseType | null;
   center_name: string;
   period_id: Uuid;
   period_label: string;
@@ -678,6 +716,8 @@ export interface FinanceSubmissionDetail {
     id: Uuid;
     center_id: Uuid;
     center_code: string;
+  /** 0074: KARNET / OBUKA; null = stara zajednička prijava. */
+  base_type?: SubmissionBaseType | null;
     center_name: string;
     period_id: Uuid;
     period_label: string;

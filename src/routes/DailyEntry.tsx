@@ -7,10 +7,11 @@ import { messageForCode } from '../features/grid/errors';
 import { mapKey } from '../features/grid/keyboard';
 import { useGrid } from '../features/grid/useGrid';
 import { WdrApiError } from '../lib/api';
-import type { SubmissionListItem } from '../lib/api/types';
+import type { PeriodSubmissionSlot, SubmissionBaseType, SubmissionListItem } from '../lib/api/types';
 import { useAuth } from '../lib/auth/AuthProvider';
 import { EntryBar } from '../components/EntryBar';
 import { InlineAddEmployee } from '../components/InlineAddEmployee';
+import { TYPE_NAME, decideOpen } from '../features/periods/baseType';
 import {
   employeeTotals,
   fromPreviewLines,
@@ -74,23 +75,69 @@ export function DailyEntry() {
     return p ? {
       id: p.id, center_id: p.center_id, center_code: p.center_code, period_id: p.period_id,
       period_label: `${p.period_start} – ${p.period_end}`, period_start: p.period_start, period_end: p.period_end,
-      status: p.status,
+      status: p.status, base_type: p.base_type ?? null,
     } : null;
   }, [submissions, submissionId, grid.payload]);
 
-  async function openPeriod(centerId: string, from: string, to: string) {
+  /*
+   * 0074 — KARNET i OBUKA su zasebne prijave. Izbor u traci (centar, period, tip)
+   * otvara postojeću prijavu tog tipa (editabilna se nastavlja, poslata/odobrena
+   * se otvara samo za pregled) ili kreira novu; stara zajednička prijava za taj
+   * period otvara se u starom režimu. Pravila sprovodi baza.
+   */
+  const [slots, setSlots] = useState<PeriodSubmissionSlot[] | null>(null);
+  const [openNotice, setOpenNotice] = useState<string | null>(null);
+
+  function showSubmission(item: SubmissionListItem) {
+    setSubmissions((list) => (list?.some((x) => x.id === item.id) ? list : [item, ...(list ?? [])]));
+    setParams({ prijava: item.id });
+  }
+
+  async function openPeriod(centerId: string, from: string, to: string, type: SubmissionBaseType) {
     setOpening(true);
     setOpenError(null);
+    setOpenNotice(null);
     setCopyInfo(null);
     try {
-      const res = await api.createPeriodSubmission(centerId, from, to);
-      const item: SubmissionListItem = {
-        id: res.submission_id, center_id: res.center_id, center_code: res.center_code,
-        period_id: res.period_id, period_label: res.period_label,
-        period_start: res.period_start, period_end: res.period_end, status: res.status,
-      };
-      setSubmissions((list) => (list?.some((x) => x.id === item.id) ? list : [item, ...(list ?? [])]));
-      setParams({ prijava: res.submission_id });
+      const sl = await api.periodSubmissionSlots(centerId, from, to);
+      setSlots(sl.slots);
+      const d = decideOpen(sl.slots, type);
+      if (d.kind === 'conflict') {
+        setOpenError(d.message);
+        return;
+      }
+      if (d.kind === 'open' || d.kind === 'legacy') {
+        const fresh = await api.listSubmissions();
+        setSubmissions(fresh);
+        setParams({ prijava: d.submissionId });
+        if (d.kind === 'legacy') {
+          setOpenNotice('Za ovaj period postoji stara zajednička prijava (Karnet + Obuka iz vremena pre razdvajanja). '
+            + 'Otvorena je u starom režimu; Karnet/Obuka u traci samo filtriraju prikaz.');
+        } else if (d.readOnly) {
+          setOpenNotice(`${TYPE_NAME[type]} prijava za ovaj period je ${d.status === 'SUBMITTED' ? 'poslata Finansijama' : 'zaključena'} — otvorena je samo za pregled.`);
+        }
+        return;
+      }
+      try {
+        const res = await api.createPeriodSubmission(centerId, from, to, type);
+        showSubmission({
+          id: res.submission_id, center_id: res.center_id, center_code: res.center_code,
+          period_id: res.period_id, period_label: res.period_label,
+          period_start: res.period_start, period_end: res.period_end, status: res.status,
+          base_type: res.base_type ?? type,
+        });
+        setSlots((await api.periodSubmissionSlots(centerId, from, to)).slots);
+      } catch (err) {
+        const legacy = sl.slots.find((x) => x.base_type === 'LEGACY');
+        if (err instanceof WdrApiError && err.code === 'PERIOD_LEGACY_COMBINED' && legacy) {
+          setSubmissions(await api.listSubmissions());
+          setParams({ prijava: legacy.submission_id });
+          setOpenNotice('Za ovaj period postoji stara zajednička prijava sa unosima i Karneta i Obuke. '
+            + 'Otvorena je u starom režimu (ne razdvaja se automatski).');
+          return;
+        }
+        throw err;
+      }
     } catch (err) {
       const code = err instanceof WdrApiError ? err.code : null;
       setOpenError(messageForCode(code, err instanceof Error ? err.message : undefined));
@@ -98,6 +145,35 @@ export function DailyEntry() {
       setOpening(false);
     }
   }
+
+  // Tip otvorene prijave određuje sekciju grida; za staru zajedničku tip je filter.
+  const [selType, setSelType] = useState<SubmissionBaseType>('KARNET');
+  useEffect(() => {
+    if (current?.base_type) {
+      setSelType(current.base_type);
+      grid.setBaseType(current.base_type);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [current?.id, current?.base_type]);
+  useEffect(() => {
+    if (!current) return;
+    api.periodSubmissionSlots(current.center_id, current.period_start, current.period_end)
+      .then((r) => setSlots(r.slots)).catch(() => setSlots(null));
+  }, [api, current?.id, current?.status]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function chooseType(t: 'KARNET' | 'OBUKA' | 'OSTALO') {
+    if (t === 'OSTALO') {
+      grid.setBaseType('OSTALO');
+      return;
+    }
+    setSelType(t);
+    if (current && !current.base_type) grid.setBaseType(t); // stara zajednička: samo filter
+  }
+
+  // Ponudi preostali tip kada je izabrani već poslat/odobren.
+  const otherType: SubmissionBaseType = selType === 'KARNET' ? 'OBUKA' : 'KARNET';
+  const otherPending = Boolean(current?.base_type && !grid.payload?.submission.editable
+    && !slots?.some((x) => x.base_type === otherType && x.exact && !x.editable));
 
   /*
    * K12: „Kopiraj prethodnu nedelju" u osnovnom Unosu NE kopira sate, statuse,
@@ -108,7 +184,8 @@ export function DailyEntry() {
   async function comparePreviousWeek() {
     if (!current || !submissions) return;
     const prev = submissions
-      .filter((x) => x.center_id === current.center_id && x.period_end < current.period_start)
+      .filter((x) => x.center_id === current.center_id && x.period_end < current.period_start
+        && (x.base_type ?? null) === (current.base_type ?? null))
       .sort((a, b) => b.period_end.localeCompare(a.period_end))[0];
     if (!prev) {
       setCopyInfo('Nema prethodne prijave za ovaj centar.');
@@ -138,12 +215,13 @@ export function DailyEntry() {
     <EntryBar
       centers={writableCenters}
       current={current}
-      baseType={grid.baseType}
+      baseType={current && !current.base_type ? grid.baseType : selType}
       counts={grid.sectionCounts}
       busy={opening}
       error={openError}
-      onOpen={(c, f, t) => void openPeriod(c, f, t)}
-      onBaseType={grid.setBaseType}
+      onOpen={(c, f, t, bt) => void openPeriod(c, f, t, bt)}
+      onBaseType={chooseType}
+      slots={slots}
       onCopyPreviousWeek={() => void comparePreviousWeek()}
       onAddEmployee={can('employee.create') ? () => setAddingEmployee(true) : undefined}
       onContextChange={setBarState}
@@ -262,6 +340,15 @@ export function DailyEntry() {
   return (
     <div className="entry-page">
       {entryBar}
+      {openNotice && <Banner kind="info" onClose={() => setOpenNotice(null)}>{openNotice}</Banner>}
+      {otherPending && barState.matchesCurrent && (
+        <Banner kind="info">
+          {TYPE_NAME[selType]} za ovaj period je već poslat.{' '}
+          <button type="button" className="btn btn-small" onClick={() => chooseType(otherType)}>
+            Otvori {TYPE_NAME[otherType]}
+          </button>
+        </Banner>
+      )}
       {addNotice && <Banner kind="success" onClose={() => setAddNotice(null)}>{addNotice}</Banner>}
       {addingEmployee && current && grid.baseType !== 'OSTALO' && (
         <InlineAddEmployee

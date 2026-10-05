@@ -2,7 +2,14 @@ import { useEffect, useMemo, useState } from 'react';
 import { Banner, StatusBadge } from './Bits';
 import { addDays, periodError, weekStart } from '../features/payouts/model';
 import type { BaseType } from '../features/grid/eligibility';
-import type { IsoDate, SubmissionListItem, Uuid } from '../lib/api/types';
+import { slotLabel } from '../features/periods/baseType';
+import type {
+  IsoDate,
+  PeriodSubmissionSlot,
+  SubmissionBaseType,
+  SubmissionListItem,
+  Uuid,
+} from '../lib/api/types';
 
 const TYPE_LABEL: Record<BaseType, string> = { KARNET: 'Karnet', OBUKA: 'Obuka', OSTALO: 'Ostalo' };
 
@@ -30,6 +37,7 @@ export function EntryBar({
   onCopyPreviousWeek,
   onAddEmployee,
   onContextChange,
+  slots = null,
 }: {
   centers: Array<{ center_id: Uuid; center_code: string }>;
   current: SubmissionListItem | null;
@@ -37,7 +45,8 @@ export function EntryBar({
   counts: Record<BaseType, number> | null;
   busy: boolean;
   error: string | null;
-  onOpen(centerId: Uuid, from: IsoDate, to: IsoDate): void;
+  /** 0074: tip je deo identiteta — otvara se KARNET ili OBUKA prijava. */
+  onOpen(centerId: Uuid, from: IsoDate, to: IsoDate, baseType: SubmissionBaseType): void;
   onBaseType(t: BaseType): void;
   onCopyPreviousWeek?(): void;
   /** „+ Dodaj zaposlenog" u izabrani centar i sekciju (Karnet/Obuka). */
@@ -48,6 +57,8 @@ export function EntryBar({
    * prikazuje prijava drugog perioda kao da pripada novom izboru.
    */
   onContextChange?(state: { valid: boolean; matchesCurrent: boolean }): void;
+  /** 0074: postojeće prijave centra za izabrani period (status po tipu). */
+  slots?: PeriodSubmissionSlot[] | null;
 }) {
   const [centerId, setCenterId] = useState<Uuid>(current?.center_id ?? centers[0]?.center_id ?? '');
   const [from, setFrom] = useState<IsoDate>(current?.period_start ?? weekStart(new Date().toISOString().slice(0, 10)));
@@ -62,8 +73,13 @@ export function EntryBar({
   }, [current]);
 
   const perr = periodError(from, to);
+  const isLegacy = Boolean(current && !current.base_type);
+  // 0074: otvorena prijava odgovara izboru tek kada se poklapa i TIP (stara
+  // zajednička prijava pokriva oba tipa — tamo izbor tipa samo filtrira).
   const same = Boolean(current && current.center_id === centerId
-    && current.period_start === from && current.period_end === to);
+    && current.period_start === from && current.period_end === to
+    && (isLegacy || current.base_type === baseType));
+  const pickType: SubmissionBaseType = baseType === 'OBUKA' ? 'OBUKA' : 'KARNET';
 
   useEffect(() => {
     onContextChange?.({ valid: !perr && Boolean(centerId), matchesCurrent: same });
@@ -73,14 +89,14 @@ export function EntryBar({
   // Automatsko otvaranje: posle kratke pauze, kada je izbor ispravan i drugačiji.
   useEffect(() => {
     if (!centerId || perr || same || busy) return;
-    const t = setTimeout(() => onOpen(centerId, from, to), 400);
+    const t = setTimeout(() => onOpen(centerId, from, to, pickType), 400);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [centerId, from, to]);
+  }, [centerId, from, to, pickType]);
 
   const tabs = useMemo<BaseType[]>(
-    () => (counts && counts.OSTALO > 0 ? ['KARNET', 'OBUKA', 'OSTALO'] : ['KARNET', 'OBUKA']),
-    [counts],
+    () => (isLegacy && counts && counts.OSTALO > 0 ? ['KARNET', 'OBUKA', 'OSTALO'] : ['KARNET', 'OBUKA']),
+    [counts, isLegacy],
   );
 
   return (
@@ -115,7 +131,8 @@ export function EntryBar({
             <button key={t} type="button" role="tab" aria-selected={baseType === t}
               className={baseType === t ? 'btn seg-active' : 'btn'}
               onClick={() => onBaseType(t)}>
-              {TYPE_LABEL[t]}{counts ? ` (${counts[t]})` : ''}
+              {t === 'OSTALO' ? TYPE_LABEL[t] : slotLabel(slots, t)}
+              {isLegacy && counts ? ` (${counts[t]})` : ''}
             </button>
           ))}
         </div>
@@ -136,7 +153,11 @@ export function EntryBar({
         <div className="entry-bar-summary" aria-label="Izabrani kontekst">
           <strong>{current.center_code}</strong>
           <span>·</span>
-          <span>{TYPE_LABEL[baseType].toUpperCase()}</span>
+          <span>
+            {isLegacy
+              ? `STARA ZAJEDNIČKA PRIJAVA · prikaz ${TYPE_LABEL[baseType].toUpperCase()}`
+              : TYPE_LABEL[baseType].toUpperCase()}
+          </span>
           <span>·</span>
           <span>{fmt(current.period_start)}–{fmt(current.period_end)}</span>
           <span>·</span>

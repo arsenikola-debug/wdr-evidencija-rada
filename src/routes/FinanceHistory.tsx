@@ -1,3 +1,4 @@
+import { BaseTypeChip } from '../components/BaseTypeChip';
 import { Link } from 'react-router-dom';
 import { useCallback, useEffect, useState } from 'react';
 import { Banner, EmptyState, Spinner } from '../components/Bits';
@@ -12,6 +13,8 @@ interface HistoryItem {
   source_type: string;
   snapshot_id: string;
   submission_id?: string | null;
+  /** 0074: KARNET / OBUKA; null = stara zajednička prijava. */
+  base_type?: 'KARNET' | 'OBUKA' | null;
   center_code: string;
   economic_period_start: string;
   economic_period_end: string;
@@ -109,7 +112,7 @@ export function FinanceHistory() {
                   </span>
                 </td>
                 <td>{h.approved_at.slice(0, 16).replace('T', ' ')}</td>
-                <td>{h.center_code}</td>
+                <td>{h.center_code} {h.transaction_type === 'PERIOD' && <BaseTypeChip type={h.base_type ?? null} />}</td>
                 <td>{h.economic_period_start} – {h.economic_period_end}</td>
                 <td>{h.total_stops ?? '—'}</td>
                 <td>{formatRsd(h.approved_amount)}</td>
