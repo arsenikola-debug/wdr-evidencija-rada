@@ -4,7 +4,12 @@ import { Link } from 'react-router-dom';
 import { Banner, EmptyState, Spinner, StatusBadge } from '../components/Bits';
 import { messageForCode } from '../features/grid/errors';
 import { formatRsd } from '../features/grid/model';
-import { needsAttention, totalForDisplay, waitingLabel } from '../features/finance/recap';
+import {
+  formatPeriod,
+  needsAttention,
+  totalForDisplay,
+  waitingLabel,
+} from '../features/finance/recap';
 import { WdrApiError } from '../lib/api';
 import type { FinanceQueue as Queue, FinanceQueueStatus } from '../lib/api/types';
 import { useAuth } from '../lib/auth/AuthProvider';
@@ -129,10 +134,7 @@ export function FinanceQueue() {
                       <strong>{it.center_code}</strong> <BaseTypeChip type={it.base_type} />
                       <span className="muted small"> {it.center_name}</span>
                     </td>
-                    <td>
-                      {it.period_start} – {it.period_end}
-                      <span className="muted small"> {it.period_label}</span>
-                    </td>
+                    <td>{formatPeriod(it.period_start, it.period_end)}</td>
                     <td><StatusBadge status={it.status} /></td>
                     <td>{waitingLabel(it.waiting_hours)}</td>
                     <td className="num">{it.recap.employee_count}</td>

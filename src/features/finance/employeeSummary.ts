@@ -73,13 +73,25 @@ export function fromPreviewLines(lines: PreviewLine[]): SummaryLine[] {
     line_kind: l.line_kind,
     payment_type_code: l.payment_type_code,
     units: l.units,
-    amount:
-      l.status === 'RESOLVED'
-        ? l.calculated_amount
-        : l.status === 'MISSING_RULE' || l.status === 'MISSING_PAYMENT_TYPE'
-          ? null
-          : 0,
+    // Isto pravilo kao fromCalcLines (operaterski Pregled i Finansije se ne razilaze).
+    amount: summaryAmount(l.status, l.calculated_amount),
   }));
+}
+
+/**
+ * Statusi stavke koji BLOKIRAJU obračun — isti skup kao u bazi
+ * (app.submission_calc_totals: MISSING_RULE, MISSING_PAYMENT_TYPE,
+ * RULE_NOT_PRICEABLE). Ostali ne-RESOLVED statusi su REŠENI ODGOVORI bez iznosa
+ * (npr. NOT_ELIGIBLE = zaposleni nema pravo na prevoz, NO_TRANSPORT_ASSIGNMENT)
+ * i doprinose 0, a ne „nepotpuno".
+ */
+export const BLOCKING_LINE_STATUSES: ReadonlySet<string> = new Set([
+  'MISSING_RULE', 'MISSING_PAYMENT_TYPE', 'RULE_NOT_PRICEABLE',
+]);
+
+function summaryAmount(status: string, amount: number | null): number | null {
+  if (status === 'RESOLVED') return amount;
+  return BLOCKING_LINE_STATUSES.has(status) ? null : 0;
 }
 
 export function fromCalcLines(lines: CalcLine[]): SummaryLine[] {
@@ -90,7 +102,10 @@ export function fromCalcLines(lines: CalcLine[]): SummaryLine[] {
     line_kind: l.line_kind,
     payment_type_code: l.payment_type_code,
     units: l.units,
-    amount: l.status === 'RESOLVED' ? l.amount : null,
+    // Ranije: svaki ne-RESOLVED status → null, pa je zaposleni BEZ prevoza
+    // (TRANSPORT / NOT_ELIGIBLE) u Finansijama dobijao „nepotpuno" iako baza tu
+    // stavku ne smatra blokadom i prijava je validno odobrena.
+    amount: summaryAmount(l.status, l.amount),
   }));
 }
 

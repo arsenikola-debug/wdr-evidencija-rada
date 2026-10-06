@@ -152,3 +152,12 @@ export const NAV_GROUPS: NavGroup[] = [
     ],
   },
 ];
+
+/**
+ * Da li zaglavlje prikazuje spisak centara korisnika. U Finansijama NE — tamo se
+ * odobrava konkretna prijava i zaglavlje nosi samo naziv stranice. Autorizacija
+ * po centrima se ovim ne menja (samo prikaz).
+ */
+export function headerShowsCenters(pathname: string, primaryProfile: UiProfile | null): boolean {
+  return !(pathname.startsWith('/finansije') || primaryProfile === 'finance');
+}

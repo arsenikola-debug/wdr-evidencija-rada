@@ -1,3 +1,4 @@
+import { formatPeriod } from '../features/finance/recap';
 import { BaseTypeChip } from '../components/BaseTypeChip';
 import { Link } from 'react-router-dom';
 import { useCallback, useEffect, useState } from 'react';
@@ -113,7 +114,7 @@ export function FinanceHistory() {
                 </td>
                 <td>{h.approved_at.slice(0, 16).replace('T', ' ')}</td>
                 <td>{h.center_code} {h.transaction_type === 'PERIOD' && <BaseTypeChip type={h.base_type ?? null} />}</td>
-                <td>{h.economic_period_start} – {h.economic_period_end}</td>
+                <td>{formatPeriod(h.economic_period_start, h.economic_period_end)}</td>
                 <td>{h.total_stops ?? '—'}</td>
                 <td>{formatRsd(h.approved_amount)}</td>
                 <td>{h.submitted_by ?? '—'}</td>
@@ -121,7 +122,7 @@ export function FinanceHistory() {
                 <td>
                   {h.transaction_type === 'PERIOD' && h.submission_id && (
                     <Link className="btn btn-small" to={`/finansije/prijava?prijava=${h.submission_id}`}
-                      title="Pregled po zaposlenom; dnevne stavke su pod Detalji">
+                      title="Pregled po zaposlenom (ukupno za period)">
                       Pregled
                     </Link>
                   )}

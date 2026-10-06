@@ -194,3 +194,42 @@ export function pricingProblemText(problem: string | null): string {
   if (!problem) return '';
   return PRICING_PROBLEM_TEXT[problem] ?? problem;
 }
+
+// ---------------------------------------------------------------------------
+// Finance odobravanje (pojednostavljeni prikaz, posle 0074)
+// ---------------------------------------------------------------------------
+
+/**
+ * Finansije odobravaju konkretnu (KARNET ili OBUKA) prijavu; za odobrenje su
+ * dovoljne tri vrednosti: naknade zaposlenima, prevoz i ukupno. „Naknade" su zbir
+ * SVIH serverskih grupa osim prevoza (osnovna naknada, prekovremeni, radna subota,
+ * ispomoć, dodatne stavke) — samo prezentacija; ništa se ne preračunava, i
+ * naknade + prevoz = ukupno iz baze.
+ */
+export interface FinanceApprovalSummary {
+  employeePay: number;
+  transport: number;
+}
+
+export function financeApprovalSummary(recap: FinanceRecap): FinanceApprovalSummary {
+  const rows = recapRows(recap);
+  const transport = rows.filter((r) => r.key === 'prevoz').reduce((sum, r) => sum + r.amount, 0);
+  const employeePay = rows.filter((r) => r.key !== 'prevoz').reduce((sum, r) => sum + r.amount, 0);
+  // Zaokruženje na 2 decimale (iznosi stižu zaokruženi po stavci iz baze).
+  return { employeePay: Math.round(employeePay * 100) / 100, transport: Math.round(transport * 100) / 100 };
+}
+
+/**
+ * Period za prikaz u Finansijama — jedan, čitljiv format:
+ *   isti godina:   17.08.–22.08.2026.
+ *   različite god.: 29.12.2025.–04.01.2026.
+ * Vrednosti perioda i filtriranje se ne menjaju.
+ */
+export function formatPeriod(start: string, end: string): string {
+  const d = (iso: string) => `${iso.slice(8, 10)}.${iso.slice(5, 7)}.`;
+  const y = (iso: string) => iso.slice(0, 4);
+  if (!start || !end) return start || end || '—';
+  return y(start) === y(end)
+    ? `${d(start)}–${d(end)}${y(end)}.`
+    : `${d(start)}${y(start)}.–${d(end)}${y(end)}.`;
+}

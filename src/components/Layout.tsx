@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../lib/auth/AuthProvider';
 import { isVisibleForProfile, resolveProfile } from '../features/auth/profile';
-import { NAV_GROUPS, type IconName } from './navConfig';
+import { NAV_GROUPS, headerShowsCenters, type IconName } from './navConfig';
 
 /**
  * Vizuelni shell. Rute, dozvole i ponašanje su nepromenjeni —
@@ -115,6 +115,7 @@ export function Layout() {
   }, [pathname]);
 
   const centers = session?.centers.map((c) => c.center_code).join(', ') ?? '';
+  const showCenters = headerShowsCenters(pathname, profile.primary);
   const role = session?.roles?.join(' · ') || 'Bez uloge';
 
   return (
@@ -214,7 +215,11 @@ export function Layout() {
           </button>
 
           <span className="topbar-title">{current}</span>
-          {centers && <span className="topbar-context">Centri: {centers}</span>}
+          {/*
+            Finansije: zaglavlje prikazuje samo naziv stranice — bez nabrajanja svih
+            centara korisnika (autorizacija po centrima se ne menja).
+          */}
+          {centers && showCenters && <span className="topbar-context">Centri: {centers}</span>}
 
           <div className="app-user">
             {apiKind === 'mock' && (

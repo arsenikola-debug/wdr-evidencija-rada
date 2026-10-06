@@ -6,16 +6,15 @@ import { messageForCode } from '../features/grid/errors';
 import { formatRsd } from '../features/grid/model';
 import {
   approvalState,
+  financeApprovalSummary,
+  formatPeriod,
   monthAllocation,
   pricingProblemText,
-  rateTimesUnits,
-  recapRows,
   totalForDisplay,
   transportByProvider,
 } from '../features/finance/recap';
-import { employeePeriodRows, fromCalcLines, fromCalcLinesWithStatus, summarizeByEmployee } from '../features/finance/employeeSummary';
+import { employeePeriodRows, fromCalcLinesWithStatus } from '../features/finance/employeeSummary';
 import { EmployeePeriodTable } from '../components/EmployeePeriodTable';
-import { EmployeeSummaryTables } from '../components/EmployeeSummaryTables';
 import { WdrApiError } from '../lib/api';
 import type { FinanceSubmissionDetail } from '../lib/api/types';
 import { useAuth } from '../lib/auth/AuthProvider';
@@ -115,6 +114,7 @@ export function FinanceSubmission() {
 
   const s = data.submission;
   const total = totalForDisplay(data.recap);
+  const summary = financeApprovalSummary(data.recap);
   const { canApprove, reasons } = approvalState(data);
   const months = monthAllocation(data.lines);
 
@@ -123,7 +123,7 @@ export function FinanceSubmission() {
       <div className="preview-head">
         <div>
           <h1>
-            {s.center_code} <BaseTypeChip type={s.base_type} /> · {s.period_start} – {s.period_end} <StatusBadge status={s.status} />
+            {s.center_code} <BaseTypeChip type={s.base_type} /> · {formatPeriod(s.period_start, s.period_end)} <StatusBadge status={s.status} />
           </h1>
           <p className="muted">
             Poslao {s.submitted_by ?? '—'}
@@ -167,18 +167,25 @@ export function FinanceSubmission() {
         </Banner>
       )}
 
-      {/* ==================================================== Obračunato ==== */}
+      {/* ===================================================== Za odobrenje ==== */}
+      {/*
+        Finansije odobravaju konkretnu KARNET ili OBUKA prijavu (0074). Za odobrenje
+        su dovoljne tri vrednosti; tehnički raspored po grupama naknada se ovde ne
+        prikazuje. Iznosi dolaze iz baze — ovde se samo sabiraju za prikaz.
+      */}
       <section className="control-section">
-        <h2>Obračunato</h2>
+        <h2>Za odobrenje</h2>
 
-        <table className="list list-compact">
+        <table className="list list-compact finance-summary">
           <tbody>
-            {recapRows(data.recap).map((r) => (
-              <tr key={r.key}>
-                <td>{r.label}</td>
-                <td className="num">{formatRsd(r.amount)}</td>
-              </tr>
-            ))}
+            <tr>
+              <td>Naknade zaposlenima</td>
+              <td className="num">{formatRsd(summary.employeePay)} RSD</td>
+            </tr>
+            <tr>
+              <td>Prevoz</td>
+              <td className="num">{formatRsd(summary.transport)} RSD</td>
+            </tr>
           </tbody>
         </table>
 
@@ -291,103 +298,20 @@ export function FinanceSubmission() {
 
       {/* ================================================ Po zaposlenom ==== */}
       {/*
-        Redizajn §21: primarni pogled Finansija je ZBIR po zaposlenom za ceo
-        period, grupisan po vrsti naknade. Dnevni detalji ostaju ispod kao
-        drill-down / audit, ne kao osnova odobrenja.
+        Finansijama je za odobrenje dovoljan zbir po zaposlenom za ceo period
+        (osnovno · prevoz · ukupno). Dnevni i stavkovni drill-down nije deo
+        odobravanja; iznosi i obračun se ne menjaju.
       */}
       <section className="control-section">
         <h2>Po zaposlenom — ukupno za period</h2>
         <p className="muted small">
-          {s.center_code} · {s.period_label} · zaposleni koji je deo perioda Karnet, a deo
-          Obuka, prikazan je u obe grupe.
+          {s.center_code} · {s.base_type === 'OBUKA' ? 'Obuka' : s.base_type === 'KARNET' ? 'Karnet' : 'Karnet + Obuka'}
+          {' '}· {formatPeriod(s.period_start, s.period_end)}
         </p>
         <EmployeePeriodTable
           rows={employeePeriodRows(fromCalcLinesWithStatus(data.lines))}
-          periodLabel={`${s.period_start} – ${s.period_end}`}
+          periodLabel={formatPeriod(s.period_start, s.period_end)}
         />
-
-        <details className="lines-details">
-          <summary>Po vrsti naknade</summary>
-          <EmployeeSummaryTables
-            groups={summarizeByEmployee(fromCalcLines(data.lines))}
-            periodLabel={`${s.period_start} – ${s.period_end}`}
-          />
-        </details>
-
-        <details className="lines-details">
-          <summary>Po zaposlenom i danu ({data.employee_days.length}) — drill-down</summary>
-        <table className="list list-compact">
-            <thead>
-              <tr>
-                <th>Zaposleni</th>
-                <th>Datum</th>
-                <th>Stanje</th>
-                <th className="num">Sati</th>
-                <th className="num">Iznos dana</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.employee_days.map((d) => (
-                <tr
-                  key={`${d.employee_id}-${d.work_date}`}
-                  className={d.blocking_line_count > 0 ? 'row-error' : ''}
-                >
-                  <td>{d.employee_name}</td>
-                  <td>{d.work_date}</td>
-                  <td>{d.attendance_status}</td>
-                  <td className="num">{d.worked_hours ?? '—'}</td>
-                  <td className="num">
-                    {d.day_amount === null
-                      ? <span className="totals-warning">nepotpuno</span>
-                      : formatRsd(d.day_amount)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </details>
-
-        <details className="lines-details">
-          <summary>Sve stavke obračuna ({data.lines.length}) — stopa × jedinice = iznos</summary>
-          <table className="list list-compact">
-            <thead>
-              <tr>
-                <th>Zaposleni</th>
-                <th>Datum</th>
-                <th>Vrsta</th>
-                <th>Stavka</th>
-                <th>Osnova</th>
-                <th>Centar</th>
-                <th className="num">Stopa × kol.</th>
-                <th className="num">Iznos</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.lines.map((l) => (
-                <tr key={l.line_no} className={l.status === 'RESOLVED' ? '' : 'row-muted'}>
-                  <td>{l.employee_name}</td>
-                  <td>{l.work_date}</td>
-                  <td>{KIND_LABEL[l.line_kind] ?? l.line_kind}</td>
-                  <td>
-                    {l.payment_type_code ?? '—'}
-                    {l.transport_provider_code ? ` (${l.transport_provider_code})` : ''}
-                  </td>
-                  <td title="Zašto je izabran ovaj centar">{l.basis}</td>
-                  <td>
-                    {l.center_code ?? '—'}
-                    {l.cost_center_code && l.cost_center_code !== l.center_code
-                      ? ` → ${l.cost_center_code}`
-                      : ''}
-                  </td>
-                  <td className="num">{rateTimesUnits(l)}</td>
-                  <td className="num">{formatRsd(l.amount)}</td>
-                  <td>{LINE_STATUS_LABEL[l.status] ?? l.status}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </details>
       </section>
 
       {/* ===================================================== Kontrole ==== */}
