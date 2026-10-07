@@ -86,17 +86,31 @@ export function CenterMultiSelect({
           <ul role="listbox" aria-multiselectable="true">
             {filtered.length === 0 && <li className="muted small">Nema centra za „{q}".</li>}
             {filtered.map((c) => (
-              <li key={c.id}>
-                <label>
-                  <input type="checkbox" checked={value.includes(c.id)} onChange={() => toggle(c.id)} />
-                  <strong>{c.code}</strong>{c.name ? <span className="muted"> · {c.name}</span> : null}
-                </label>
-              </li>
+              <CenterOptionRow key={c.id} center={c} selected={value.includes(c.id)} onToggle={() => toggle(c.id)} />
             ))}
           </ul>
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * Jedna opcija u JEDNOM redu: ☐ B6 — Rakovica. Ceo red je klikabilan (label
+ * obuhvata checkbox); izabrana opcija je suptilno istaknuta.
+ */
+export function CenterOptionRow({
+  center, selected, onToggle,
+}: { center: CenterOption; selected: boolean; onToggle(): void }) {
+  return (
+    <li role="option" aria-selected={selected}>
+      <label className={selected ? 'center-ms-option is-selected' : 'center-ms-option'}
+        title={center.name ? `${center.code} — ${center.name}` : center.code}>
+        <input type="checkbox" checked={selected} onChange={onToggle} />
+        <strong className="center-ms-code">{center.code}</strong>
+        {center.name ? <em className="center-ms-name">— {center.name}</em> : null}
+      </label>
+    </li>
   );
 }
 

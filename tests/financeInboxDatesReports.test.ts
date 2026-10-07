@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { CenterMultiSelect, filterCenters } from '../src/components/CenterMultiSelect';
+import { CenterMultiSelect, CenterOptionRow, filterCenters } from '../src/components/CenterMultiSelect';
 import {
   type StopsQueueItem,
   mergeInbox,
@@ -178,5 +178,37 @@ describe('Admin → Izveštaji isplata: izbor centara i grupisanje', () => {
 
   it('Excel: redovi sortirani po centru', () => {
     expect(sortByCenter([{ c: 'NP' }, { c: 'BZ' }, { c: 'BM' }], (r) => r.c).map((r) => r.c)).toEqual(['BM', 'BZ', 'NP']);
+  });
+});
+
+// =============================================================================
+describe('izbor centara: opcija u jednom redu (☐ B6 — Rakovica)', () => {
+  const row = (selected: boolean) => renderToStaticMarkup(createElement(CenterOptionRow, {
+    center: { id: '1', code: 'B6', name: 'Rakovica' }, selected, onToggle: () => {},
+  }));
+
+  it('checkbox, šifra i naziv su u ISTOM klikabilnom redu (jedan label), redom', () => {
+    const html = row(false);
+    expect((html.match(/<label/g) ?? []).length).toBe(1);
+    expect(html).toMatch(/<label class="center-ms-option"[^>]*><input type="checkbox"[^>]*\/><strong class="center-ms-code">B6<\/strong><em class="center-ms-name">— Rakovica<\/em><\/label>/);
+    expect(html).not.toContain('<span');            // naziv nije pogođen pravilom `label > span`
+  });
+
+  it('izabrani centar je suptilno istaknut i označen za čitače ekrana', () => {
+    const html = row(true);
+    expect(html).toContain('class="center-ms-option is-selected"');
+    expect(html).toContain('aria-selected="true"');
+    expect(html).toContain('checked=""');
+  });
+
+  it('CSS: opcija je horizontalna i poništava kolonski raspored oznaka polja', () => {
+    const css = readFileSync(join(__dirname, '..', 'src', 'styles.css'), 'utf8');
+    const rule = css.slice(css.indexOf('.center-ms-menu .center-ms-option {'));
+    const body = rule.slice(0, rule.indexOf('}'));
+    expect(body).toContain('flex-direction: row');
+    expect(body).toContain('cursor: pointer');
+    expect(body).toContain('white-space: nowrap');
+    // specifičnost iznad `.report-filters label` (koji postavlja kolonu)
+    expect('.center-ms-menu .center-ms-option'.split('.').length - 1).toBeGreaterThan(1);
   });
 });

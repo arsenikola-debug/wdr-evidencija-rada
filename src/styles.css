@@ -1357,7 +1357,22 @@ kbd {
 }
 .center-ms-menu input[type="search"] { width: 100%; box-sizing: border-box; margin-bottom: 6px; }
 .center-ms-menu ul { list-style: none; margin: 0; padding: 0; max-height: 260px; overflow-y: auto; }
-.center-ms-menu li label { display: flex; gap: 6px; align-items: center; padding: 4px 2px; font-size: 13px; }
+/* Opcija: JEDAN red — ☐ B6 — Rakovica. Pravilo `.report-filters label` (kolona, za
+   oznake polja Od/Do) ovde se izričito poništava; ceo red je klikabilan. */
+.center-ms-menu .center-ms-option {
+  display: flex; flex-direction: row; align-items: center; gap: 8px;
+  padding: 5px 6px; margin: 0; font-size: 13px; line-height: 1.3;
+  border-radius: var(--radius-sm); cursor: pointer; white-space: nowrap; min-width: 0;
+}
+.center-ms-menu .center-ms-option:hover { background: var(--surface-muted); }
+.center-ms-menu .center-ms-option.is-selected { background: var(--primary-weak); }
+.center-ms-menu .center-ms-option input[type="checkbox"] { margin: 0; flex: 0 0 auto; cursor: pointer; }
+.center-ms-menu .center-ms-code { flex: 0 0 auto; font-weight: 600; color: var(--text-primary); }
+.center-ms-menu .center-ms-name {
+  font-style: normal; font-weight: 400; font-size: 13px; color: var(--text-secondary);
+  overflow: hidden; text-overflow: ellipsis; min-width: 0;
+}
+.center-ms-menu li { margin: 0; padding: 0; }
 .report-center-group { margin-top: 14px; }
 .report-center-group > h3 {
   margin: 0 0 6px; padding: 4px 10px; background: var(--primary-weak); color: var(--primary);
