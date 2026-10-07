@@ -1,3 +1,4 @@
+import { centerLabel, sortCenters } from '../lib/format/sort';
 import { formatPeriod } from '../lib/format/date';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
@@ -132,7 +133,7 @@ export function Payouts() {
               ) : (
                 <select value={centerId} onChange={(e) => setCenterId(e.target.value)}>
                   <option value="">—</option>
-                  {ctx.centers.map((c) => <option key={c.id} value={c.id}>{c.code} · {c.name}</option>)}
+                  {sortCenters(ctx.centers).map((c) => <option key={c.id} value={c.id}>{centerLabel(c)}</option>)}
                 </select>
               )}
             </label>

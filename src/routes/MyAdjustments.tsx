@@ -1,3 +1,4 @@
+import { sortByLabel } from '../lib/format/sort';
 import { formatDate, formatPeriod } from '../lib/format/date';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Banner, EmptyState, Spinner } from '../components/Bits';
@@ -204,7 +205,7 @@ export function MyAdjustments() {
                 onChange={(e) => update({ employee_id: e.target.value })}
               >
                 <option value="">—</option>
-                {(reference?.employees ?? []).map((e) => (
+                {sortByLabel(reference?.employees, (e) => e.full_name).map((e) => (
                   <option key={e.employee_id} value={e.employee_id}>
                     {e.full_name}
                   </option>
@@ -241,7 +242,7 @@ export function MyAdjustments() {
                 onChange={(e) => update({ payment_type_id: e.target.value })}
               >
                 <option value="">—</option>
-                {componentTypes.map((p) => (
+                {sortByLabel(componentTypes, (t) => t.name).map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name}
                   </option>

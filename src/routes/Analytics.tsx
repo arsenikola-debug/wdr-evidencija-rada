@@ -1,3 +1,4 @@
+import { centerLabel, sortCenters } from '../lib/format/sort';
 import { formatDate } from '../lib/format/date';
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -170,8 +171,8 @@ export function Analytics({ section }: { section: Section }) {
               onChange={(e) => setCenterIds(e.target.value === '' ? [] : [e.target.value])}
             >
               <option value="">Svi centri</option>
-              {(cfg?.centers ?? []).map((c) => (
-                <option key={c.id} value={c.id}>{c.code} · {c.name}</option>
+              {sortCenters((cfg?.centers ?? [])).map((c) => (
+                <option key={c.id} value={c.id}>{centerLabel(c)}</option>
               ))}
             </select></label>
         )}

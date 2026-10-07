@@ -1,3 +1,4 @@
+import { centerLabel, sortByLabel, sortCenters } from '../lib/format/sort';
 import { useEffect, useMemo, useState } from 'react';
 import { Banner } from './Bits';
 import { messageForCode } from '../features/grid/errors';
@@ -169,7 +170,7 @@ export function NewEmployeeForm({
           <select value={form.center_id} disabled={Boolean(lockedCenterId)}
             onChange={(e) => set({ center_id: e.target.value })}>
             <option value="">—</option>
-            {(cfg?.centers ?? []).map((c) => <option key={c.id} value={c.id}>{c.code} · {c.name}</option>)}
+            {sortCenters((cfg?.centers ?? [])).map((c) => <option key={c.id} value={c.id}>{centerLabel(c)}</option>)}
           </select></label>
         <label><span>Osnovna vrsta isplate</span>
           <select value={form.primary_payment_type_id} disabled={Boolean(lockedPrimaryTypeCode)}
@@ -207,7 +208,7 @@ export function NewEmployeeForm({
               <select value={form.transport_provider_id}
                 onChange={(e) => set({ transport_provider_id: e.target.value })}>
                 <option value="">—</option>
-                {providers.map((p) => <option key={p.id} value={p.id}>{p.code} · {p.name}</option>)}
+                {sortByLabel(providers, (p) => p.name).map((p) => <option key={p.id} value={p.id}>{p.code} · {p.name}</option>)}
               </select></label>
             <label><span>Prevoz važi od</span>
               <input type="date" value={form.transport_valid_from}

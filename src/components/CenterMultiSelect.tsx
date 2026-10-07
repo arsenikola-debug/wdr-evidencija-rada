@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { sortCenters } from '../lib/format/sort';
 
 export interface CenterOption {
   id: string;
@@ -35,9 +36,12 @@ export function CenterMultiSelect({
     return () => document.removeEventListener('mousedown', close);
   }, [open]);
 
-  const byId = useMemo(() => new Map(centers.map((c) => [c.id, c])), [centers]);
-  const selected = value.map((id) => byId.get(id)).filter((c): c is CenterOption => Boolean(c));
-  const filtered = filterCenters(centers, q);
+  // Abecedno po NAZIVU centra (A–Ž); pretraga filtrira već sortiranu listu, pa i
+  // rezultati ostaju abecedni. „Svi centri" (prazan izbor) je uvek na vrhu kontrole.
+  const sorted = useMemo(() => sortCenters(centers), [centers]);
+  const byId = useMemo(() => new Map(sorted.map((c) => [c.id, c])), [sorted]);
+  const selected = sortCenters(value.map((id) => byId.get(id)).filter((c): c is CenterOption => Boolean(c)));
+  const filtered = visibleOptions(sorted, q);
   const toggle = (id: string) => onChange(value.includes(id) ? value.filter((x) => x !== id) : [...value, id]);
 
   return (
@@ -112,6 +116,11 @@ export function CenterOptionRow({
       </label>
     </li>
   );
+}
+
+/** Opcije u padajućoj listi: abecedno po nazivu centra, pa pretraga (redosled ostaje). */
+export function visibleOptions<T extends CenterOption>(centers: T[], q: string): T[] {
+  return filterCenters(sortCenters(centers), q);
 }
 
 /** Pretraga po šifri ili nazivu, bez obzira na dijakritiku i velika/mala slova. */

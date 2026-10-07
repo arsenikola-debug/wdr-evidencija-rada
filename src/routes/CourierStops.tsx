@@ -1,3 +1,4 @@
+import { centerLabel, sortCenters } from '../lib/format/sort';
 import { formatDate } from '../lib/format/date';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Banner, EmptyState, Spinner } from '../components/Bits';
@@ -197,7 +198,7 @@ export function CourierStops() {
         <label><span>Centar</span>
           <select value={centerId} onChange={(e) => setCenterId(e.target.value)}>
             <option value="">—</option>
-            {centers.map((c) => <option key={c.id} value={c.id}>{c.code} — {c.name}</option>)}
+            {sortCenters(centers).map((c) => <option key={c.id} value={c.id}>{centerLabel(c)}</option>)}
           </select>
         </label>
         <label><span>Od</span>

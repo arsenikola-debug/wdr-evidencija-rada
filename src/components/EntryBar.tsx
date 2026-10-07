@@ -1,3 +1,4 @@
+import { centerLabel, sortCenters } from '../lib/format/sort';
 import { formatPeriod } from '../lib/format/date';
 import { useEffect, useMemo, useState } from 'react';
 import { Banner, StatusBadge } from './Bits';
@@ -37,7 +38,7 @@ export function EntryBar({
   onContextChange,
   slots = null,
 }: {
-  centers: Array<{ center_id: Uuid; center_code: string }>;
+  centers: Array<{ center_id: Uuid; center_code: string; center_name?: string | null }>;
   current: SubmissionListItem | null;
   baseType: BaseType;
   counts: Record<BaseType, number> | null;
@@ -106,7 +107,9 @@ export function EntryBar({
             <strong className="entry-bar-static">{centers[0].center_code}</strong>
           ) : (
             <select value={centerId} onChange={(e) => setCenterId(e.target.value)} disabled={busy}>
-              {centers.map((c) => <option key={c.center_id} value={c.center_id}>{c.center_code}</option>)}
+              {sortCenters(centers.map((c) => ({ ...c, code: c.center_code, name: c.center_name }))).map((c) => (
+                <option key={c.center_id} value={c.center_id}>{centerLabel(c)}</option>
+              ))}
             </select>
           )}
         </label>

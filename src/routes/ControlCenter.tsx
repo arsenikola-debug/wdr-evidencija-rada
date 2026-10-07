@@ -1,3 +1,4 @@
+import { centerLabel, sortByLabel, sortCenters } from '../lib/format/sort';
 import { formatDate, formatDateTime } from '../lib/format/date';
 import { useCallback, useEffect, useState } from 'react';
 import { Banner, EmptyState, Spinner } from '../components/Bits';
@@ -229,8 +230,8 @@ export function ControlCenter() {
               onChange={(e) => setCenterIds(e.target.value === '' ? [] : [e.target.value])}
             >
               <option value="">Svi centri</option>
-              {(cfg?.centers ?? []).map((c) => (
-                <option key={c.id} value={c.id}>{c.code} · {c.name}</option>
+              {sortCenters((cfg?.centers ?? [])).map((c) => (
+                <option key={c.id} value={c.id}>{centerLabel(c)}</option>
               ))}
             </select></label>
         )}
@@ -257,7 +258,7 @@ export function ControlCenter() {
         <label><span>Kontrola</span>
           <select value={ruleCode} onChange={(e) => setRuleCode(e.target.value)}>
             <option value="">Sve kontrole</option>
-            {run.rules.map((r) => (
+            {sortByLabel(run.rules, (r) => r.name).map((r) => (
               <option key={r.rule_code} value={r.rule_code}>{r.name}</option>
             ))}
           </select></label>
@@ -428,7 +429,7 @@ export function ControlCenter() {
               <th className="num">Prag</th><th>Stanje</th></tr>
           </thead>
           <tbody>
-            {run.rules.map((r) => (
+            {sortByLabel(run.rules, (r) => r.name).map((r) => (
               <tr key={r.rule_code} className={r.status === 'ACTIVE' ? '' : 'row-muted'}>
                 <td>
                   <strong>{r.name}</strong>

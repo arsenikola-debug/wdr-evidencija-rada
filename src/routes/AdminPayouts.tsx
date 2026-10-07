@@ -1,3 +1,4 @@
+import { centerLabel, sortByLabel, sortCenters } from '../lib/format/sort';
 import { formatDate } from '../lib/format/date';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Banner, Spinner } from '../components/Bits';
@@ -215,12 +216,12 @@ export function AdminPayouts() {
           <label>Centar
             <select value={rate.center} onChange={(e) => setRate({ ...rate, center: e.target.value })}>
               <option value="">—</option>
-              {cfg.centers.filter((c) => c.active).map((c) => <option key={c.id} value={c.id}>{c.code} · {c.name}</option>)}
+              {sortCenters(cfg.centers.filter((c) => c.active)).map((c) => <option key={c.id} value={c.id}>{centerLabel(c)}</option>)}
             </select>
           </label>
           <label>Vrsta
             <select value={rate.type} onChange={(e) => setRate({ ...rate, type: e.target.value })}>
-              {ctx.types.map((t) => <option key={t.code} value={t.code}>{t.name}</option>)}
+              {sortByLabel(ctx.types, (t) => t.name).map((t) => <option key={t.code} value={t.code}>{t.name}</option>)}
             </select>
           </label>
           <label>{RULE_UNIT[rate.type] === 'PER_HOUR' ? 'Iznos po satu (RSD)' : 'Iznos po danu (RSD)'}
@@ -240,7 +241,7 @@ export function AdminPayouts() {
             <select value={filterCenter} onChange={(e) => setFilterCenter(e.target.value)}>
               <option value="">svi</option>
               <option value="GLOBAL">(globalno)</option>
-              {cfg.centers.map((c) => <option key={c.id} value={c.id}>{c.code}</option>)}
+              {sortCenters(cfg.centers).map((c) => <option key={c.id} value={c.id}>{centerLabel(c)}</option>)}
             </select>
           </label>
           <label className="confirm-row">

@@ -1,3 +1,4 @@
+import { centerLabel, sortByLabel, sortCenters } from '../lib/format/sort';
 import { formatDate, formatDateTime } from '../lib/format/date';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Banner, EmptyState, Spinner } from '../components/Bits';
@@ -363,7 +364,7 @@ export function Admin() {
             <label><span>Ponašanje</span>
               <select value={draft.behavior ?? ''} onChange={(e) => set('behavior', e.target.value)}>
                 <option value="">—</option>
-                {cfg.attendance_behaviors.map((b) => (
+                {sortByLabel(cfg.attendance_behaviors, (b) => b.name).map((b) => (
                   <option key={b.behavior_key} value={b.behavior_key}>{b.name}</option>
                 ))}
               </select></label>
@@ -442,7 +443,7 @@ export function Admin() {
             <label><span>Ponašanje obračuna</span>
               <select value={draft.behavior ?? ''} onChange={(e) => set('behavior', e.target.value)}>
                 <option value="">—</option>
-                {cfg.payment_behaviors.map((b) => (
+                {sortByLabel(cfg.payment_behaviors, (b) => b.name).map((b) => (
                   <option key={b.behavior_key} value={b.behavior_key}>
                     {b.name} ({b.kind})
                   </option>
@@ -539,14 +540,14 @@ export function Admin() {
             <label><span>Centar</span>
               <select value={draft.center ?? ''} onChange={(e) => set('center', e.target.value)}>
                 <option value="">GLOBALNO</option>
-                {cfg.centers.filter((c) => c.active).map((c) => (
-                  <option key={c.id} value={c.id}>{c.code}</option>
+                {sortCenters(cfg.centers.filter((c) => c.active)).map((c) => (
+                  <option key={c.id} value={c.id}>{centerLabel(c)}</option>
                 ))}
               </select></label>
             <label><span>Vrsta isplate</span>
               <select value={draft.pt ?? ''} onChange={(e) => set('pt', e.target.value)}>
                 <option value="">—</option>
-                {cfg.payment_types.filter((p) => p.active).map((p) => (
+                {sortByLabel(cfg.payment_types.filter((p) => p.active), (p) => p.name).map((p) => (
                   <option key={p.id} value={p.id}>{p.name}</option>
                 ))}
               </select></label>
@@ -604,7 +605,7 @@ export function Admin() {
             <label><span>Pravilo</span>
               <select value={draft.rule ?? ''} onChange={(e) => set('rule', e.target.value)}>
                 <option value="">—</option>
-                {cfg.compensation_rules.filter((r) => !r.valid_to).map((r) => (
+                {sortByLabel(cfg.compensation_rules.filter((r) => !r.valid_to), (r) => `${r.center_code ?? 'GLOBALNO'} ${r.payment_type_code}`).map((r) => (
                   <option key={r.id} value={r.id}>
                     {r.center_code ?? 'GLOBALNO'} · {r.payment_type_code} · {r.amount}
                   </option>
@@ -656,7 +657,7 @@ export function Admin() {
             <label><span>Odgovorno lice</span>
               <select value={draft.presp ?? ''} onChange={(e) => set('presp', e.target.value)}>
                 <option value="">—</option>
-                {cfg.responsible_persons.filter((r) => r.active).map((r) => (
+                {sortByLabel(cfg.responsible_persons.filter((r) => r.active), (r) => r.full_name).map((r) => (
                   <option key={r.id} value={r.id}>{r.code} · {r.full_name}</option>
                 ))}
               </select></label>
@@ -749,15 +750,15 @@ export function Admin() {
             <label><span>Prevoznik</span>
               <select value={draft.tprov ?? ''} onChange={(e) => set('tprov', e.target.value)}>
                 <option value="">—</option>
-                {cfg.transport_providers.filter((p) => p.active).map((p) => (
+                {sortByLabel(cfg.transport_providers.filter((p) => p.active), (p) => p.name).map((p) => (
                   <option key={p.id} value={p.id}>{p.code}</option>
                 ))}
               </select></label>
             <label><span>Centar</span>
               <select value={draft.tcenter ?? ''} onChange={(e) => set('tcenter', e.target.value)}>
                 <option value="">GLOBALNO</option>
-                {cfg.centers.filter((c) => c.active).map((c) => (
-                  <option key={c.id} value={c.id}>{c.code}</option>
+                {sortCenters(cfg.centers.filter((c) => c.active)).map((c) => (
+                  <option key={c.id} value={c.id}>{centerLabel(c)}</option>
                 ))}
               </select></label>
             <label><span>Model</span>
@@ -922,8 +923,8 @@ export function Admin() {
                   <select value={draft.stopCenter ?? ''}
                     onChange={(e) => set('stopCenter', e.target.value)}>
                     <option value="">—</option>
-                    {cfg.centers.map((c) => (
-                      <option key={c.id} value={c.id}>{c.code}</option>
+                    {sortCenters(cfg.centers).map((c) => (
+                      <option key={c.id} value={c.id}>{centerLabel(c)}</option>
                     ))}
                   </select></label>
                 <label><span>Cena po stopu</span>
@@ -956,7 +957,7 @@ export function Admin() {
                   <select value={draft.stopRateId ?? ''}
                     onChange={(e) => set('stopRateId', e.target.value)}>
                     <option value="">—</option>
-                    {(stopRates?.current ?? []).map((r) => (
+                    {sortByLabel(stopRates?.current, (r) => r.center_code).map((r) => (
                       <option key={r.id} value={r.id}>
                         {r.center_code} — {r.amount_per_stop} (v{r.version})
                       </option>
@@ -1013,8 +1014,8 @@ export function Admin() {
             <label><span>Centar</span>
               <select value={draft.kcenter ?? ''} onChange={(e) => set('kcenter', e.target.value)}>
                 <option value="">GLOBALNO</option>
-                {cfg.centers.filter((c) => c.active).map((c) => (
-                  <option key={c.id} value={c.id}>{c.code}</option>
+                {sortCenters(cfg.centers.filter((c) => c.active)).map((c) => (
+                  <option key={c.id} value={c.id}>{centerLabel(c)}</option>
                 ))}
               </select></label>
             <label><span>Važi od</span>
@@ -1074,7 +1075,7 @@ export function Admin() {
                 <th>Prioritet</th><th>Važi od</th><th>Verzija</th><th>Stanje</th></tr>
             </thead>
             <tbody>
-              {cfg.control_rules.map((r) => (
+              {sortByLabel(cfg.control_rules, (r) => r.name).map((r) => (
                 <tr key={r.rule_code} className={r.status === 'ACTIVE' ? '' : 'row-muted'}>
                   <td>
                     <strong>{r.name}</strong>
@@ -1103,7 +1104,7 @@ export function Admin() {
             <label><span>Kontrola</span>
               <select value={draft.crule ?? ''} onChange={(e) => set('crule', e.target.value)}>
                 <option value="">—</option>
-                {cfg.control_rules.map((r) => (
+                {sortByLabel(cfg.control_rules, (r) => r.name).map((r) => (
                   <option key={r.rule_code} value={r.rule_code}>{r.name}</option>
                 ))}
               </select></label>
@@ -1375,7 +1376,7 @@ export function Admin() {
                   <th>Izuzeci permisija</th></tr>
               </thead>
               <tbody>
-                {cfg.users.map((u) => (
+                {sortByLabel(cfg.users, (u) => u.full_name || u.email).map((u) => (
                   <tr key={u.profile_id} className={u.active ? '' : 'row-muted'}>
                     <td>{u.full_name}<div className="muted small">{u.email}</div></td>
                     <td>{u.active ? 'da' : 'ne'}</td>
@@ -1454,11 +1455,11 @@ export function Admin() {
                   <tr><th>Centar</th><th>Pristup</th><th>Pravo pisanja</th></tr>
                 </thead>
                 <tbody>
-                  {cfg.centers.filter((c) => c.active).map((c) => {
+                  {sortCenters(cfg.centers.filter((c) => c.active)).map((c) => {
                     const row = newUserCenters.find((x) => x.code === c.code);
                     return (
                       <tr key={c.id}>
-                        <td><strong>{c.code}</strong> · {c.name}</td>
+                        <td>{centerLabel(c)}</td>
                         <td>
                           <input
                             type="checkbox"
@@ -1569,7 +1570,7 @@ export function Admin() {
                     }}
                   >
                     <option value="">—</option>
-                    {cfg.users.map((u) => (
+                    {sortByLabel(cfg.users, (u) => u.full_name || u.email).map((u) => (
                       <option key={u.profile_id} value={u.profile_id}>{u.full_name}</option>
                     ))}
                   </select></label>
@@ -1613,11 +1614,11 @@ export function Admin() {
               <table className="list list-compact">
                 <thead><tr><th>Centar</th><th>Pristup</th><th>Pravo pisanja</th></tr></thead>
                 <tbody>
-                  {cfg.centers.filter((c) => c.active).map((c) => {
+                  {sortCenters(cfg.centers.filter((c) => c.active)).map((c) => {
                     const row = userCenters.find((x) => x.code === c.code);
                     return (
                       <tr key={c.id}>
-                        <td><strong>{c.code}</strong> · {c.name}</td>
+                        <td>{centerLabel(c)}</td>
                         <td>
                           <input
                             type="checkbox"

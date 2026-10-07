@@ -1,3 +1,4 @@
+import { centerLabel, sortByLabel, sortCenters } from '../lib/format/sort';
 import { formatDate } from '../lib/format/date';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Banner, EmptyState, Spinner } from '../components/Bits';
@@ -181,7 +182,7 @@ export function AdminImport() {
             <label><span>Centar</span>
               <select value={bulkCenter} onChange={(e) => setBulkCenter(e.target.value)}>
                 <option value="">svi</option>
-                {(ref?.centers ?? []).map((c) => <option key={c.id} value={c.id}>{c.code} · {c.name}</option>)}
+                {sortCenters((ref?.centers ?? [])).map((c) => <option key={c.id} value={c.id}>{centerLabel(c)}</option>)}
               </select></label>
             <label><span>Osnovna vrsta</span>
               <select value={bulkType} onChange={(e) => setBulkType(e.target.value as 'KARNET' | 'OBUKA')}>
@@ -330,7 +331,7 @@ export function AdminImport() {
               <label><span>Centar</span>
                 <select value={form.center_id} onChange={(e) => setForm({ ...form, center_id: e.target.value })}>
                   <option value="">—</option>
-                  {(ref?.centers ?? []).map((c) => <option key={c.id} value={c.id}>{c.code} · {c.name}</option>)}
+                  {sortCenters((ref?.centers ?? [])).map((c) => <option key={c.id} value={c.id}>{centerLabel(c)}</option>)}
                 </select></label>
               <label><span>Osnovna vrsta</span>
                 <select value={form.primary_payment_type_id}
@@ -355,7 +356,7 @@ export function AdminImport() {
                     <select value={form.transport_provider_id ?? ''}
                       onChange={(e) => setForm({ ...form, transport_provider_id: e.target.value || null })}>
                       <option value="">—</option>
-                      {(ref?.transport_providers ?? []).map((p) => <option key={p.id} value={p.id}>{p.code} · {p.name}</option>)}
+                      {sortByLabel(ref?.transport_providers, (p) => p.name).map((p) => <option key={p.id} value={p.id}>{p.code} · {p.name}</option>)}
                     </select></label>
                   <label><span>Prevoz važi od</span>
                     <input type="date" value={form.transport_valid_from ?? ''}

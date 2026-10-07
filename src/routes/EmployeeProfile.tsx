@@ -1,3 +1,4 @@
+import { centerLabel, sortByLabel, sortCenters } from '../lib/format/sort';
 import { formatDate, formatMonth, formatPeriod } from '../lib/format/date';
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
@@ -216,8 +217,8 @@ export function EmployeeProfile() {
                 <select value={draft.center ?? ''}
                   onChange={(ev) => set('center', ev.target.value)}>
                   <option value="">—</option>
-                  {(cfg?.centers ?? []).map((c) => (
-                    <option key={c.id} value={c.id}>{c.code} · {c.name}</option>
+                  {sortCenters((cfg?.centers ?? [])).map((c) => (
+                    <option key={c.id} value={c.id}>{centerLabel(c)}</option>
                   ))}
                 </select></label>
               <label><span>Premeštaj od</span>
@@ -299,7 +300,7 @@ export function EmployeeProfile() {
                   <select value={draft.provider ?? ''}
                     onChange={(ev) => set('provider', ev.target.value)}>
                     <option value="">—</option>
-                    {(cfg?.transport_providers ?? []).map((x) => (
+                    {sortByLabel(cfg?.transport_providers, (p) => p.name).map((x) => (
                       <option key={x.id} value={x.id}>{x.code} · {x.name}</option>
                     ))}
                   </select></label>
