@@ -1336,3 +1336,30 @@ kbd {
 .period-table td.num, .period-table th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .period-table tr.period-total td { font-weight: 700; background: var(--surface-muted); }
 .row-actions { display: flex; gap: 6px; justify-content: flex-end; }
+
+/* Admin izveštaj: izbor centara (usklađen sa Od/Do) */
+.report-filters { align-items: flex-end; }
+.report-filters > label, .center-ms { display: flex; flex-direction: column; gap: 3px; font-size: 12px; }
+.report-filters input[type="date"], .center-ms-control {
+  height: 34px; box-sizing: border-box; border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm); padding: 0 10px; background: var(--surface); font-size: 13px;
+}
+.center-ms { position: relative; min-width: 240px; }
+.center-ms-control { display: flex; align-items: center; gap: 4px; cursor: pointer; overflow: hidden; }
+.center-ms-caret { margin-left: auto; color: var(--text-secondary); }
+.center-ms-chip { display: inline-flex; align-items: center; gap: 2px; }
+.center-ms-chip button { border: 0; background: transparent; cursor: pointer; padding: 0 2px; line-height: 1; }
+.center-ms-clear { position: absolute; right: 0; top: -4px; }
+.center-ms-menu {
+  position: absolute; top: 100%; left: 0; z-index: 30; margin-top: 4px; width: 100%; min-width: 260px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12); padding: 8px;
+}
+.center-ms-menu input[type="search"] { width: 100%; box-sizing: border-box; margin-bottom: 6px; }
+.center-ms-menu ul { list-style: none; margin: 0; padding: 0; max-height: 260px; overflow-y: auto; }
+.center-ms-menu li label { display: flex; gap: 6px; align-items: center; padding: 4px 2px; font-size: 13px; }
+.report-center-group { margin-top: 14px; }
+.report-center-group > h3 {
+  margin: 0 0 6px; padding: 4px 10px; background: var(--primary-weak); color: var(--primary);
+  border-left: 3px solid var(--primary-line); border-radius: var(--radius-sm); font-size: 14px;
+}

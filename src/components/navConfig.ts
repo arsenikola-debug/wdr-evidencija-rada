@@ -82,12 +82,10 @@ export const NAV_GROUPS: NavGroup[] = [
         permission: 'finance.queue.view', icon: 'wallet', profiles: ['finance'],
       },
       {
+        // Objedinjeno: sve dodatne isplate + Stopovi (detalji na postojećim rutama).
         to: '/finansije/dodatne-isplate', label: 'Dodatne isplate',
-        permission: 'payout.approve', icon: 'check', profiles: ['finance'],
-      },
-      {
-        to: '/finansije/stopovi-kurira', label: 'Odobrenje stopova',
-        permission: 'finance.queue.view', icon: 'truck', profiles: ['finance'],
+        permission: 'finance.queue.view', icon: 'check', profiles: ['finance'],
+        alsoActiveOn: ['/finansije/stopovi-kurira'],
       },
       {
         to: '/finansije/istorija', label: 'Istorija obračuna',
@@ -152,12 +150,3 @@ export const NAV_GROUPS: NavGroup[] = [
     ],
   },
 ];
-
-/**
- * Da li zaglavlje prikazuje spisak centara korisnika. U Finansijama NE — tamo se
- * odobrava konkretna prijava i zaglavlje nosi samo naziv stranice. Autorizacija
- * po centrima se ovim ne menja (samo prikaz).
- */
-export function headerShowsCenters(pathname: string, primaryProfile: UiProfile | null): boolean {
-  return !(pathname.startsWith('/finansije') || primaryProfile === 'finance');
-}

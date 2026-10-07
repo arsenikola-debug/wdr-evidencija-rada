@@ -1,3 +1,4 @@
+import { formatPeriod } from '../lib/format/date';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Banner, EmptyState, Spinner, StatusBadge } from '../components/Bits';
@@ -296,7 +297,7 @@ function OperatorHome() {
                   <li key={s.id} className="signal signal-bad">
                     <div className="signal-main">
                       <strong>
-                        {s.center_code} · {s.period_label}
+                        {s.center_code} · {formatPeriod(s.period_start, s.period_end)}
                       </strong>
                       <span className="muted small">
                         {s.return_reason
@@ -330,10 +331,10 @@ function OperatorHome() {
                   <li key={s.id} className="signal">
                     <div className="signal-main">
                       <strong>
-                        {s.center_code} · {s.period_label}
+                        {s.center_code} · {formatPeriod(s.period_start, s.period_end)}
                       </strong>
                       <span className="muted small">
-                        {s.period_start} – {s.period_end}
+                        {formatPeriod(s.period_start, s.period_end)}
                       </span>
                     </div>
                     <StatusBadge status={s.status} />
@@ -544,7 +545,7 @@ function FinanceHome() {
                     >
                       <div className="signal-main">
                         <strong>
-                          {it.center_code} · {it.period_label}
+                          {it.center_code} · {formatPeriod(it.period_start, it.period_end)}
                         </strong>
                         <span className="muted small">
                           {it.waiting_days != null ? `čeka ${it.waiting_days} dana` : 'čeka'}

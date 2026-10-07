@@ -1,3 +1,4 @@
+import { formatPeriod } from '../lib/format/date';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { Banner, Spinner } from '../components/Bits';
@@ -117,7 +118,7 @@ export function PayoutRequest() {
       <div className="preview-head">
         <div>
           <h1>
-            {r.request_type_name} — {r.center_code} · {r.period_start} – {r.period_end}
+            {r.request_type_name} — {r.center_code} · {formatPeriod(r.period_start, r.period_end)}
             {r.is_correction && <span className="chip chip-warn"> KOREKCIJA</span>}
           </h1>
           <p className="muted">{STATUS_LABEL[r.status]} · {TYPE_HINT[r.request_type]}</p>
@@ -127,7 +128,7 @@ export function PayoutRequest() {
 
       {r.is_correction && r.corrects && (
         <Banner kind="info">
-          Korekcija odobrenog zahteva {r.corrects.period_start} – {r.corrects.period_end}.
+          Korekcija odobrenog zahteva {formatPeriod(r.corrects.period_start, r.corrects.period_end)}.
           Razlog: {r.correction_reason}. Original ostaje nepromenjen.
         </Banner>
       )}

@@ -1,3 +1,4 @@
+import { formatPeriod } from '../lib/format/date';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Banner, EmptyState, Spinner } from '../components/Bits';
@@ -67,7 +68,7 @@ export function Payouts() {
 
   async function openCorrection(original: PayoutListItem) {
     const reason = window.prompt(
-      `Korekcija: ${original.request_type_name} ${original.center_code} ${original.period_start} – ${original.period_end}.\n`
+      `Korekcija: ${original.request_type_name} ${original.center_code} ${formatPeriod(original.period_start, original.period_end)}.\n`
       + 'Razlog korekcije (najmanje 10 znakova):',
     );
     if (!reason) return;
@@ -175,7 +176,7 @@ export function Payouts() {
                       {i.request_type_name}
                       {i.is_correction && <span className="chip chip-warn"> KOREKCIJA</span>}
                     </td>
-                    <td>{i.period_start} – {i.period_end}</td>
+                    <td>{formatPeriod(i.period_start, i.period_end)}</td>
                     <td>{i.center_code}</td>
                     <td className="num">{i.employees}</td>
                     <td className="num">{i.total_amount == null ? 'nepotpuno' : `${formatRsd(i.total_amount)} RSD`}</td>

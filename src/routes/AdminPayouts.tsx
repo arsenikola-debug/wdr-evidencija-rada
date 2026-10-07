@@ -1,3 +1,4 @@
+import { formatDate } from '../lib/format/date';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Banner, Spinner } from '../components/Bits';
 import { messageForCode } from '../features/grid/errors';
@@ -150,7 +151,7 @@ export function AdminPayouts() {
         <h2>Cutover</h2>
         {ctx.active ? (
           <Banner kind="info">
-            Aktivirano od <strong>{ctx.cutover_date}</strong>. Od tog datuma dnevnice, ispomoć, radna
+            Aktivirano od <strong>{formatDate(ctx.cutover_date)}</strong>. Od tog datuma dnevnice, ispomoć, radna
             subota i prekovremeni idu isključivo kroz Dodatne isplate; stari putevi su zaključani u bazi.
           </Banner>
         ) : (
@@ -260,8 +261,8 @@ export function AdminPayouts() {
                 <td>{rule.center_code ?? '(globalno)'}</td>
                 <td>{UNIT_TEXT[rule.unit_type] ?? rule.unit_type}</td>
                 <td className="num">{formatRsd(rule.amount)} RSD</td>
-                <td>{rule.valid_from}</td>
-                <td>{rule.valid_to ?? '—'}</td>
+                <td>{formatDate(rule.valid_from)}</td>
+                <td>{formatDate(rule.valid_to)}</td>
                 <td>v{rule.version}{!rule.valid_to || rule.valid_to >= today ? '' : ' · zatvorena'}</td>
               </tr>
             ))}

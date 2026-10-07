@@ -1,3 +1,4 @@
+import { formatDate, formatMonth, formatPeriod } from '../lib/format/date';
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { Banner, EmptyState, Spinner } from '../components/Bits';
@@ -83,8 +84,8 @@ export function EmployeeProfile() {
             <span className="muted">{e.employee_code ?? 'bez šifre'}</span>
           </h1>
           <p className="muted">
-            Radni odnos {e.employment_start_date}
-            {e.employment_end_date ? ` – ${e.employment_end_date}` : ' (u toku)'} ·{' '}
+            Radni odnos {formatDate(e.employment_start_date)}
+            {e.employment_end_date ? ` – ${formatDate(e.employment_end_date)}` : ' (u toku)'} ·{' '}
             {e.active ? 'aktivan' : 'neaktivan'}
           </p>
         </div>
@@ -193,8 +194,8 @@ export function EmployeeProfile() {
             {p.assignments.map((a) => (
               <tr key={a.id} className={a.is_current ? '' : 'row-muted'}>
                 <td><strong>{a.center_code}</strong></td>
-                <td>{a.valid_from}</td>
-                <td>{a.valid_to ?? '—'}</td>
+                <td>{formatDate(a.valid_from)}</td>
+                <td>{formatDate(a.valid_to)}</td>
                 <td>{a.primary_payment_type_code ?? '—'}</td>
                 <td>{a.default_shift_code ?? '—'}</td>
                 <td>{a.is_current ? 'da' : '—'}</td>
@@ -256,7 +257,7 @@ export function EmployeeProfile() {
             <p>
               Trenutno: <strong>{cur ? (cur.transport_required ? 'DA' : 'NE') : '—'}</strong>
               {cur?.transport_required
-                ? ` · prevoznik ${cur.provider_code ?? '—'} · od ${cur.valid_from}`
+                ? ` · prevoznik ${cur.provider_code ?? '—'} · od ${formatDate(cur.valid_from)}`
                 : ''}
             </p>
           );
@@ -271,8 +272,8 @@ export function EmployeeProfile() {
               <tr key={t.id} className={t.is_current ? '' : 'row-muted'}>
                 <td>{t.transport_required ? 'DA' : 'NE'}</td>
                 <td>{t.provider_code ?? '—'}</td>
-                <td>{t.valid_from}</td>
-                <td>{t.valid_to ?? '—'}</td>
+                <td>{formatDate(t.valid_from)}</td>
+                <td>{formatDate(t.valid_to)}</td>
                 <td>{t.is_current ? 'da' : '—'}</td>
               </tr>
             ))}
@@ -333,7 +334,7 @@ export function EmployeeProfile() {
       <section className="control-section">
         <h2>Operativni i finansijski pregled</h2>
         <p className="muted small">
-          Period {p.period.from} – {p.period.to}. Odobreni iznosi dolaze iz
+          Period {formatPeriod(p.period.from, p.period.to)}. Odobreni iznosi dolaze iz
           nepromenljivih obračuna, sa semantikom zapisanom u trenutku odobrenja.
         </p>
 
@@ -351,7 +352,7 @@ export function EmployeeProfile() {
             <tbody>
               {p.operational_summary.map((m) => (
                 <tr key={`${m.month}-${m.center_code}`}>
-                  <td>{m.month}</td>
+                  <td>{formatMonth(m.month)}</td>
                   <td>{m.center_code ?? '—'}</td>
                   <td className="num">{m.worked_days}</td>
                   <td className="num">{m.go_days}</td>
@@ -379,7 +380,7 @@ export function EmployeeProfile() {
               <tbody>
                 {p.approved_payments.map((l, i) => (
                   <tr key={`${l.work_date}-${l.payment_type_code}-${i}`}>
-                    <td>{l.work_date}</td>
+                    <td>{formatDate(l.work_date)}</td>
                     <td>{l.center_code}</td>
                     <td>{l.is_adjustment ? 'Korekcija' : l.line_kind}</td>
                     <td>{l.payment_type_code}</td>
@@ -406,7 +407,7 @@ export function EmployeeProfile() {
               <tbody>
                 {p.adjustments.map((a) => (
                   <tr key={a.id}>
-                    <td>{a.related_work_date}</td>
+                    <td>{formatDate(a.related_work_date)}</td>
                     <td>{a.direction_label}</td>
                     <td>{a.payment_type_code}</td>
                     <td className="num">{a.units}</td>

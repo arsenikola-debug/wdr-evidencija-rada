@@ -1,3 +1,4 @@
+import { formatDate } from '../lib/format/date';
 import { useCallback, useState } from 'react';
 import { Banner, EmptyState } from '../components/Bits';
 import { messageForCode } from '../features/grid/errors';
@@ -127,7 +128,7 @@ export function CourierStopCorrections({ lines }: { lines?: ApprovedLine[] }) {
               <option value="">—</option>
               {(lines ?? []).map((l) => (
                 <option key={l.snapshot_line_id} value={l.snapshot_line_id}>
-                  {l.employee_name} · {l.work_date} · {l.stop_count} stopova
+                  {l.employee_name} · {formatDate(l.work_date)} · {l.stop_count} stopova
                 </option>
               ))}
             </select></label>
@@ -146,7 +147,7 @@ export function CourierStopCorrections({ lines }: { lines?: ApprovedLine[] }) {
           <table className="list list-compact">
             <tbody>
               <tr><th>Kurir</th><td>{selected.employee_name}</td></tr>
-              <tr><th>Datum rada</th><td>{selected.work_date}</td></tr>
+              <tr><th>Datum rada</th><td>{formatDate(selected.work_date)}</td></tr>
               <tr><th>Centar</th><td>{selected.center_code}</td></tr>
               <tr><th>Odobreno stopova</th><td>{selected.stop_count}</td></tr>
               <tr><th>Odobrena cena po stopu</th>

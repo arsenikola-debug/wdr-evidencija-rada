@@ -1,3 +1,4 @@
+import { formatPeriod } from '../lib/format/date';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Banner, CellLegend, EmptyState, KeyboardHelp, Spinner } from '../components/Bits';
@@ -74,7 +75,7 @@ export function DailyEntry() {
     const p = grid.payload?.submission;
     return p ? {
       id: p.id, center_id: p.center_id, center_code: p.center_code, period_id: p.period_id,
-      period_label: `${p.period_start} – ${p.period_end}`, period_start: p.period_start, period_end: p.period_end,
+      period_label: `${formatPeriod(p.period_start, p.period_end)}`, period_start: p.period_start, period_end: p.period_end,
       status: p.status, base_type: p.base_type ?? null,
     } : null;
   }, [submissions, submissionId, grid.payload]);
@@ -198,7 +199,7 @@ export function DailyEntry() {
       const gone = prevGrid.employees.filter((e) => !now.has(e.employee_id));
       const added = curGrid.employees.filter((e) => !prevGrid.employees.some((p) => p.employee_id === e.employee_id));
       setCopyInfo(
-        `Prethodna nedelja (${prev.period_label}): ${prevGrid.employees.length} zaposlenih. `
+        `Prethodna nedelja (${formatPeriod(prev.period_start, prev.period_end)}): ${prevGrid.employees.length} zaposlenih. `
         + `Na listi i sada: ${kept.length}. `
         + (gone.length > 0
           ? `Više nisu raspoređeni ovde (unos nije moguć): ${gone.map((e) => e.full_name).join(', ')}. `

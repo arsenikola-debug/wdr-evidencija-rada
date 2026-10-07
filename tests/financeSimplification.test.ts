@@ -4,7 +4,6 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { EmployeePeriodTable } from '../src/components/EmployeePeriodTable';
-import { headerShowsCenters } from '../src/components/navConfig';
 import {
   employeePeriodRows,
   fromCalcLines,
@@ -103,8 +102,9 @@ describe('Finance rezime za odobrenje: samo naknade, prevoz, ukupno', () => {
 
 describe('period i zaglavlje', () => {
   it('period se prikazuje jednom, čitljivo', () => {
-    expect(formatPeriod('2026-08-17', '2026-08-22')).toBe('17.08.–22.08.2026.');
-    expect(formatPeriod('2025-12-29', '2026-01-04')).toBe('29.12.2025.–04.01.2026.');
+    // Jedinstven UI format (lib/format/date.ts): 05.10.2026. – 11.10.2026.
+    expect(formatPeriod('2026-08-17', '2026-08-22')).toBe('17.08.2026. – 22.08.2026.');
+    expect(formatPeriod('2025-12-29', '2026-01-04')).toBe('29.12.2025. – 04.01.2026.');
   });
 
   it('red za odobrenje i istorija ne ispisuju period dva puta', () => {
@@ -115,11 +115,10 @@ describe('period i zaglavlje', () => {
     expect(queue).toContain('<BaseTypeChip');
   });
 
-  it('Finansije: zaglavlje bez spiska centara (ostali delovi aplikacije nepromenjeni)', () => {
-    expect(headerShowsCenters('/finansije', 'finance')).toBe(false);
-    expect(headerShowsCenters('/finansije/prijava', 'admin')).toBe(false);
-    expect(headerShowsCenters('/finansije/istorija', 'finance')).toBe(false);
-    expect(headerShowsCenters('/', 'finance')).toBe(false);
-    expect(headerShowsCenters('/unos', 'operator')).toBe(true);
+  it('zaglavlje ne nabraja centre ni za jednu ulogu (Admin, Finansije, Operater)', () => {
+    const layout = src('components/Layout.tsx');
+    expect(layout).not.toMatch(/Centri:\s*\{/);
+    expect(layout).not.toMatch(/session\?\.centers\.map/);
+    expect(layout).toContain('<span className="topbar-title">{current}</span>');
   });
 });

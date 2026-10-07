@@ -1,3 +1,4 @@
+import { formatDate } from '../../lib/format/date';
 /**
  * Opis izabranog vremenskog raspona.
  *
@@ -28,10 +29,9 @@ const MONTHS = [
   'jul', 'avgust', 'septembar', 'oktobar', 'novembar', 'decembar',
 ];
 
+/** Jedinstven UI format (lib/format/date.ts). */
 export function formatDay(iso: string): string {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso || '—';
-  const [y, m, d] = iso.split('-');
-  return `${d}.${m}.${y}.`;
+  return formatDate(iso);
 }
 
 function lastDayOfMonth(year: number, month1: number): number {

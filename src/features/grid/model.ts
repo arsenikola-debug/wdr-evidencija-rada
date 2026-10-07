@@ -139,7 +139,8 @@ export function formatDateHeader(date: IsoDate): { day: string; dm: string; week
   const dow = d.getUTCDay();
   return {
     day: DAY_SHORT[dow],
-    dm: `${String(d.getUTCDate()).padStart(2, '0')}.${String(d.getUTCMonth() + 1).padStart(2, '0')}.`,
+    // Jedinstven UI format datuma (lib/format/date.ts): 05.10.2026.
+    dm: `${String(d.getUTCDate()).padStart(2, '0')}.${String(d.getUTCMonth() + 1).padStart(2, '0')}.${d.getUTCFullYear()}.`,
     weekend: dow === 0 || dow === 6,
   };
 }

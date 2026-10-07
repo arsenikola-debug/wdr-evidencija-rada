@@ -67,7 +67,7 @@ describe('dates', () => {
   it('marks Saturday and Sunday as weekend in the header', () => {
     expect(formatDateHeader('2026-07-11').weekend).toBe(true);
     expect(formatDateHeader('2026-07-08').weekend).toBe(false);
-    expect(formatDateHeader('2026-07-08').dm).toBe('08.07.');
+    expect(formatDateHeader('2026-07-08').dm).toBe('08.07.2026.'); // jedinstven UI format
   });
 
   it('shifts dates across month boundaries', () => {

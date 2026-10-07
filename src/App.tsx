@@ -9,6 +9,7 @@ import { AdminImport } from './routes/AdminImport';
 import { Payouts } from './routes/Payouts';
 import { PayoutRequest } from './routes/PayoutRequest';
 import { FinancePayouts } from './routes/FinancePayouts';
+import { FinanceAdditionalPayouts } from './routes/FinanceAdditionalPayouts';
 import { CorrectionBatches } from './routes/CorrectionBatches';
 import { Analytics } from './routes/Analytics';
 import { ControlCenter } from './routes/ControlCenter';
@@ -142,7 +143,9 @@ export default function App() {
           />
           <Route path="/dodatne-isplate" element={<RequireAuth permission="payout.create"><Payouts /></RequireAuth>} />
           <Route path="/dodatne-isplate/:id" element={<RequireAuth permission="payout.create"><PayoutRequest /></RequireAuth>} />
-          <Route path="/finansije/dodatne-isplate" element={<RequireAuth permission="payout.approve"><FinancePayouts /></RequireAuth>} />
+          {/* Objedinjeni Finance prikaz (dodatne isplate + Stopovi); detalji ostaju postojeći. */}
+          <Route path="/finansije/dodatne-isplate" element={<RequireAuth permission="finance.queue.view"><FinanceAdditionalPayouts /></RequireAuth>} />
+          <Route path="/finansije/dodatne-isplate/zahtev" element={<RequireAuth permission="payout.approve"><FinancePayouts /></RequireAuth>} />
           <Route path="/korekcije" element={<RequireAuth permission="adjustment.create"><CorrectionBatches mode="operator" /></RequireAuth>} />
           <Route path="/finansije/korekcije" element={<RequireAuth permission="adjustment.approve"><CorrectionBatches mode="finance" /></RequireAuth>} />
           <Route path="/administracija/uvoz-zaposlenih" element={<RequireAuth permission="centers.manage"><AdminImport /></RequireAuth>} />

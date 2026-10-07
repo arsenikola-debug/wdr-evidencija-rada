@@ -1,3 +1,4 @@
+import { formatDate } from '../lib/format/date';
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Banner, EmptyState, Spinner } from '../components/Bits';
@@ -153,8 +154,8 @@ export function Employees({ mode }: { mode: 'list' | 'new' }) {
                         : 'NE'}
                   </td>
                   <td>
-                    {e.employment_start_date}
-                    {e.employment_end_date ? ` – ${e.employment_end_date}` : ''}
+                    {formatDate(e.employment_start_date)}
+                    {e.employment_end_date ? ` – ${formatDate(e.employment_end_date)}` : ''}
                   </td>
                   <td>
                     <Link className="btn btn-quiet" to={`/zaposleni/${e.id}`}>Otvori</Link>

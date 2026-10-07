@@ -1,4 +1,6 @@
+import { formatDate, formatDateTime, formatPeriod } from '../lib/format/date';
 import { useCallback, useEffect, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Banner, EmptyState, Spinner } from '../components/Bits';
 import { messageForCode } from '../features/grid/errors';
 import { formatRsd } from '../features/grid/model';
@@ -27,6 +29,8 @@ export function FinancePayouts() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [params] = useSearchParams();
+  const deepId = params.get('zahtev');
 
   const fail = useCallback((err: unknown) => {
     const code = err instanceof WdrApiError ? err.code : null;
@@ -42,6 +46,16 @@ export function FinancePayouts() {
   }, [api, tab, fail]);
 
   useEffect(() => { setSel(null); void load(); }, [load]);
+
+  // Otvaranje iz objedinjenog prikaza „Dodatne isplate" (?zahtev=<id>).
+  useEffect(() => {
+    if (!deepId) return;
+    api.payoutGet(deepId).then((d) => {
+      const st = d.request.status;
+      if (st === 'SUBMITTED' || st === 'RETURNED' || st === 'FINANCE_APPROVED') setTab(st);
+      setSel(d);
+    }).catch(fail);
+  }, [api, deepId, fail]);
 
   async function decide(kind: 'approve' | 'return') {
     if (!sel) return;
@@ -64,6 +78,7 @@ export function FinancePayouts() {
 
   return (
     <div className="page">
+      <p className="small"><Link to="/finansije/dodatne-isplate">← Dodatne isplate</Link></p>
       <h1>Dodatne isplate — odobrenje</h1>
       {error && <Banner kind="error" onClose={() => setError(null)}>{error}</Banner>}
       {notice && <Banner kind="success" onClose={() => setNotice(null)}>{notice}</Banner>}
@@ -92,7 +107,7 @@ export function FinancePayouts() {
               <tr key={i.id} className={sel?.request.id === i.id ? 'row-focus' : ''}>
                 <td>{i.request_type_name}</td>
                 <td>{i.center_code}</td>
-                <td>{i.period_start} – {i.period_end}</td>
+                <td>{formatPeriod(i.period_start, i.period_end)}</td>
                 <td>{i.is_correction ? <span className="chip chip-warn">KOREKCIJA</span> : 'Original'}</td>
                 <td className="num">{i.employees}</td>
                 <td className="num">{i.total_amount == null ? 'nepotpuno' : formatRsd(i.total_amount)}</td>
@@ -111,17 +126,17 @@ export function FinancePayouts() {
       {sel && (
         <section className="control-section">
           <h2>
-            {sel.request.request_type_name} · {sel.request.center_code} · {sel.request.period_start} – {sel.request.period_end}
+            {sel.request.request_type_name} · {sel.request.center_code} · {formatPeriod(sel.request.period_start, sel.request.period_end)}
             {sel.request.is_correction && <span className="chip chip-warn"> KOREKCIJA</span>}
           </h2>
           <p className="muted small">
             {STATUS_LABEL[sel.request.status]} · poslao {sel.request.submitted_by ?? '—'}
-            {sel.request.submitted_at ? ` (${new Date(sel.request.submitted_at).toLocaleString('sr-Latn-RS')})` : ''}
+            {sel.request.submitted_at ? ` (${formatDateTime(sel.request.submitted_at)})` : ''}
           </p>
           {sel.request.is_correction && sel.request.corrects && (
             <Banner kind="info">
-              Korekcija originala {sel.request.corrects.period_start} – {sel.request.corrects.period_end}
-              {sel.request.corrects.approved_at ? `, odobrenog ${new Date(sel.request.corrects.approved_at).toLocaleDateString('sr-Latn-RS')}` : ''}.
+              Korekcija originala {formatPeriod(sel.request.corrects.period_start, sel.request.corrects.period_end)}
+              {sel.request.corrects.approved_at ? `, odobrenog ${formatDate(sel.request.corrects.approved_at)}` : ''}.
               Razlog: {sel.request.correction_reason}
             </Banner>
           )}
@@ -138,7 +153,7 @@ export function FinancePayouts() {
               {sel.summary.filter((s) => s.days > 0).map((s) => (
                 <tr key={s.employee_id}>
                   <td>{s.full_name}<span className="muted small"> · {s.employee_code ?? 'bez šifre'}</span></td>
-                  <td>{sel.request.period_start} – {sel.request.period_end}</td>
+                  <td>{formatPeriod(sel.request.period_start, sel.request.period_end)}</td>
                   <td className="num">{sel.request.unit_model === 'DAY' ? s.days : s.units}</td>
                   <td className="num">{s.amount == null ? 'nepotpuno' : formatRsd(s.amount)}</td>
                 </tr>
@@ -164,7 +179,7 @@ export function FinancePayouts() {
                 {sel.lines.map((l) => (
                   <tr key={l.id} className={l.problem ? 'row-error' : ''}>
                     <td>{sel.employees.find((e) => e.employee_id === l.employee_id)?.full_name}</td>
-                    <td>{l.work_date}</td>
+                    <td>{formatDate(l.work_date)}</td>
                     <td>{l.time_from ? `${l.time_from.slice(0, 5)}–${l.time_to?.slice(0, 5)}${l.crosses_midnight ? ' (preko ponoći)' : ''}` : '—'}</td>
                     <td className="num">{l.units}</td>
                     <td className="num">{l.rate == null ? '—' : formatRsd(l.rate)}</td>

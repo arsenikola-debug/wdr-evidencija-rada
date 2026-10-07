@@ -1,3 +1,4 @@
+import { formatDateTime, localizeIsoDates } from '../lib/format/date';
 import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '../lib/auth/AuthProvider';
 import type { NotificationItem } from '../lib/api/types';
@@ -51,9 +52,9 @@ export function Notifications() {
         {items.map((n) => (
           <li key={n.id} className={n.read_at ? 'read' : 'unread'}>
             <span className="notif-type">{n.type}</span>
-            <span className="notif-text">{n.text}</span>
+            <span className="notif-text">{localizeIsoDates(n.text)}</span>
             <span className="notif-date">
-              {new Date(n.created_at).toLocaleString('sr-Latn-RS')}
+              {formatDateTime(n.created_at)}
             </span>
           </li>
         ))}

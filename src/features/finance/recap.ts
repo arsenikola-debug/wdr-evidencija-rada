@@ -219,17 +219,5 @@ export function financeApprovalSummary(recap: FinanceRecap): FinanceApprovalSumm
   return { employeePay: Math.round(employeePay * 100) / 100, transport: Math.round(transport * 100) / 100 };
 }
 
-/**
- * Period za prikaz u Finansijama — jedan, čitljiv format:
- *   isti godina:   17.08.–22.08.2026.
- *   različite god.: 29.12.2025.–04.01.2026.
- * Vrednosti perioda i filtriranje se ne menjaju.
- */
-export function formatPeriod(start: string, end: string): string {
-  const d = (iso: string) => `${iso.slice(8, 10)}.${iso.slice(5, 7)}.`;
-  const y = (iso: string) => iso.slice(0, 4);
-  if (!start || !end) return start || end || '—';
-  return y(start) === y(end)
-    ? `${d(start)}–${d(end)}${y(end)}.`
-    : `${d(start)}${y(start)}.–${d(end)}${y(end)}.`;
-}
+/** Period za prikaz (jedinstven UI format — vidi lib/format/date.ts). */
+export { formatPeriod } from '../../lib/format/date';

@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { CenterMultiSelect } from '../components/CenterMultiSelect';
+import { groupByCenter } from '../features/reports/groupByCenter';
 import { Banner, EmptyState, Spinner } from '../components/Bits';
 import { defaultRange, rangeIsValid } from '../features/analytics/model';
 import { formatDay } from '../features/analytics/period';
@@ -109,35 +111,21 @@ export function AdminReports() {
         Prevoz se prikazuje odvojeno i nije deo naknade zaposlenom.
       </p>
 
-      <div className="report-filters">
+      <div className="report-filters toolbar-unified">
         <label>
-          Od
+          <span>Od</span>
           <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
         </label>
         <label>
-          Do
+          <span>Do</span>
           <input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
         </label>
         {centers.length > 0 && (
-          <div>
-            <div className="small">Centri {centerIds.length === 0 && <span className="muted">(svi)</span>}</div>
-            <div className="report-centers">
-              {centers.map((c) => (
-                <label key={c.id}>
-                  <input
-                    type="checkbox"
-                    checked={centerIds.includes(c.id)}
-                    onChange={(e) =>
-                      setCenterIds((cur) =>
-                        e.target.checked ? [...cur, c.id] : cur.filter((x) => x !== c.id),
-                      )
-                    }
-                  />
-                  {c.code}
-                </label>
-              ))}
-            </div>
-          </div>
+          <CenterMultiSelect
+            centers={centers.map((c) => ({ id: c.id, code: c.code, name: c.name }))}
+            value={centerIds}
+            onChange={setCenterIds}
+          />
         )}
         <button type="button" className="btn btn-primary" onClick={() => void load()} disabled={busy}>
           {busy ? 'Učitavanje…' : 'Prikaži'}
@@ -200,6 +188,9 @@ export function AdminReports() {
             report.by_employee.length === 0 ? (
               <EmptyState title="Nema odobrenih isplata u izabranom periodu" />
             ) : (
+              groupByCenter(report.by_employee, (r) => [r.center_code]).map((g) => (
+              <section key={g.centerCode} className="report-center-group">
+              <h3>{g.centerCode} <span className="muted small">· {g.rows.length} zaposl.</span></h3>
               <div className="table-scroll">
                 <table className="list list-compact">
                   <thead>
@@ -216,7 +207,7 @@ export function AdminReports() {
                     </tr>
                   </thead>
                   <tbody>
-                    {report.by_employee.map((r) => (
+                    {g.rows.map((r) => (
                       <tr key={`${r.employee_id}-${r.center_id}`}>
                         <td>{r.employee_code ?? '—'}</td>
                         <td>{r.employee_name}</td>
@@ -240,6 +231,8 @@ export function AdminReports() {
                   </tbody>
                 </table>
               </div>
+              </section>
+              ))
             )
           )}
 
@@ -247,6 +240,9 @@ export function AdminReports() {
             report.by_day.length === 0 ? (
               <EmptyState title="Nema evidentiranih ljudi u izabranom periodu" />
             ) : (
+              groupByCenter(report.by_day, (d) => [d.center_code]).map((g) => (
+              <section key={g.centerCode} className="report-center-group">
+              <h3>{g.centerCode}</h3>
               <div className="table-scroll">
                 <table className="list list-compact">
                   <thead>
@@ -260,7 +256,7 @@ export function AdminReports() {
                     </tr>
                   </thead>
                   <tbody>
-                    {report.by_day.map((d) => (
+                    {g.rows.map((d) => (
                       <tr key={`${d.work_date}-${d.center_id}`}>
                         <td>{formatDay(d.work_date)}</td>
                         <td>{d.center_code}</td>
@@ -277,6 +273,8 @@ export function AdminReports() {
                   </tbody>
                 </table>
               </div>
+              </section>
+              ))
             )
           )}
 
@@ -289,6 +287,9 @@ export function AdminReports() {
               {report.multi_category.length === 0 ? (
                 <EmptyState title="Nema zaposlenih u više kategorija istog dana" />
               ) : (
+                groupByCenter(report.multi_category, (m) => m.center_codes).map((g) => (
+                <section key={g.centerCode} className="report-center-group">
+                <h3>{g.centerCode}</h3>
                 <table className="list list-compact">
                   <thead>
                     <tr>
@@ -300,7 +301,7 @@ export function AdminReports() {
                     </tr>
                   </thead>
                   <tbody>
-                    {report.multi_category.map((m) => (
+                    {g.rows.map((m) => (
                       <tr key={`${m.employee_id}-${m.work_date}`}>
                         <td>{formatDay(m.work_date)}</td>
                         <td>{m.employee_code ?? '—'}</td>
@@ -311,6 +312,8 @@ export function AdminReports() {
                     ))}
                   </tbody>
                 </table>
+                </section>
+                ))
               )}
             </>
           )}

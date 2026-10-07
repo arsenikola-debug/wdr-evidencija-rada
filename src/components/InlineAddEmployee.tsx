@@ -1,3 +1,4 @@
+import { formatDate } from '../lib/format/date';
 import { useState } from 'react';
 import { Banner } from './Bits';
 import { NewEmployeeForm } from './NewEmployeeForm';
@@ -132,7 +133,7 @@ export function InlineAddEmployee({
             prefill={{ first_name: first, last_name: last }}
             onCancel={onClose}
             onUseExisting={(e) => onDone(`${e.full_name} već postoji — nije napravljen novi zapis.`)}
-            onCreated={(p) => onDone(`Zaposleni ${p.employee.full_name} je kreiran i raspoređen u ${centerCode} od ${p.employee.employment_start_date}.`)}
+            onCreated={(p) => onDone(`Zaposleni ${p.employee.full_name} je kreiran i raspoređen u ${centerCode} od ${formatDate(p.employee.employment_start_date)}.`)}
           />
         )}
       </div>

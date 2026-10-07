@@ -13,8 +13,11 @@ describe('navigacija', () => {
     expect(all.find((i) => i.to === '/dodatne-isplate')?.alsoActiveOn).toContain('/stopovi-kurira');
   });
 
-  it('Finansije zadržavaju odobrenje stopova', () => {
-    expect(groupOf('/finansije/stopovi-kurira')).toBe('Finansije');
+  it('Finansije: Stopovi su deo objedinjenih „Dodatnih isplata" (nema zasebne stavke)', () => {
+    const fin = all.find((i) => i.to === '/finansije/dodatne-isplate');
+    expect(fin?.group).toBe('Finansije');
+    expect(fin?.alsoActiveOn).toContain('/finansije/stopovi-kurira');
+    expect(all.some((i) => i.to === '/finansije/stopovi-kurira')).toBe(false);
   });
 
   it('Uvoz zaposlenih, Zaposleni i Tarife su u Administraciji, ne u Analitici', () => {

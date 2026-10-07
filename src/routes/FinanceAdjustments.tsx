@@ -1,3 +1,4 @@
+import { formatDate } from '../lib/format/date';
 import { useCallback, useEffect, useState } from 'react';
 import { Banner, EmptyState, Spinner } from '../components/Bits';
 import { messageForCode } from '../features/grid/errors';
@@ -150,7 +151,7 @@ export function FinanceAdjustments() {
                     {a.employee_name}
                     <div className="muted small">{a.center_code} · {a.reason}</div>
                   </td>
-                  <td>{a.related_work_date}</td>
+                  <td>{formatDate(a.related_work_date)}</td>
                   <td>{a.direction_label}</td>
                   <td>{a.payment_type_code}</td>
                   <td className="num">
@@ -169,7 +170,7 @@ export function FinanceAdjustments() {
                     ))}
                     {a.approval && (
                       <div className="muted small">
-                        Odobreno {new Date(a.approval.approved_at).toLocaleDateString('sr-Latn-RS')}
+                        Odobreno {formatDate(a.approval.approved_at)}
                         {' '}· ekonomski datum {a.approval.economic_date}
                         {' '}· potpis <code>{a.approval.content_hash.slice(0, 12)}…</code>
                       </div>
@@ -200,7 +201,7 @@ export function FinanceAdjustments() {
             return (
               <section className="control-section">
                 <h2>
-                  Odluka: {a.direction_label} · {a.employee_name} · {a.related_work_date}
+                  Odluka: {a.direction_label} · {a.employee_name} · {formatDate(a.related_work_date)}
                 </h2>
 
                 <div className={a.can_approve ? 'totals totals-complete' : 'totals totals-partial'}>
@@ -213,7 +214,7 @@ export function FinanceAdjustments() {
                     {signedAmountLabel(a.calculation.amount_signed)} RSD
                   </span>
                   <span className="muted small">
-                    Pravilo je rezolvirano za datum rada {a.related_work_date}. Iznos nije
+                    Pravilo je rezolvirano za datum rada {formatDate(a.related_work_date)}. Iznos nije
                     izmenljiv — odobrava se ili se zahtev vraća/odbija.
                   </span>
                 </div>

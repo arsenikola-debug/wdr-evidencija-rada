@@ -119,7 +119,7 @@ describe('XLSX izvoz', () => {
     const s2 = back.getWorksheet('Po danu i centru')!;
     expect((s2.getRow(1).values as unknown[]).map(String)).toContain('GO (bez rada)');
     expect(s2.getRow(2).getCell(1).value).toBeInstanceOf(Date);
-    expect(s2.getColumn(1).numFmt).toBe('dd.mm.yyyy');
+    expect(s2.getColumn(1).numFmt).toBe('dd.mm.yyyy.'); // prikaz 05.10.2026. (pravi datum u ćeliji)
 
     const s3 = back.getWorksheet('Višestruke kategorije')!;
     expect(s3.getRow(2).getCell(5).value).toBe('Karnet + Prekovremeni');

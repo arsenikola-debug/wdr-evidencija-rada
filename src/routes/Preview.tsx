@@ -1,3 +1,4 @@
+import { formatDate, formatPeriod } from '../lib/format/date';
 import { BaseTypeChip } from '../components/BaseTypeChip';
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
@@ -120,8 +121,7 @@ export function Preview() {
         <div>
           <h1>Pregled pre slanja</h1>
           <p className="muted">
-            Centar {data.submission.center_code} <BaseTypeChip type={data.submission.base_type} /> · period {data.submission.period_start} –{' '}
-            {data.submission.period_end}
+            Centar {data.submission.center_code} <BaseTypeChip type={data.submission.base_type} /> · period {formatPeriod(data.submission.period_start, data.submission.period_end)}
           </p>
         </div>
         <Link className="btn btn-quiet" to={`/unos?prijava=${submissionId}`}>
@@ -323,7 +323,7 @@ export function Preview() {
                 {data.blocking.map((l, i) => (
                   <tr key={`${l.work_entry_id}-${l.payment_type_code}-${i}`} className="row-error">
                     <td>{l.employee_name}</td>
-                    <td>{l.work_date}</td>
+                    <td>{formatDate(l.work_date)}</td>
                     <td>{l.payment_type_code ?? '—'}</td>
                     <td>{l.center_code ?? '—'}</td>
                     <td>{STATUS_LABEL[l.status]}</td>

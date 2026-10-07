@@ -1,3 +1,4 @@
+import { formatDate } from '../lib/format/date';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Banner, EmptyState, Spinner } from '../components/Bits';
 import { messageForCode } from '../features/grid/errors';
@@ -320,7 +321,7 @@ export function CourierStops() {
               {detail.lines.map((l, i) => (
                 <tr key={i}>
                   <td>{l.employee_name}</td>
-                  <td>{l.work_date}</td>
+                  <td>{formatDate(l.work_date)}</td>
                   <td>{l.center_code}</td>
                   <td>{l.stop_count}</td>
                   <td>{l.rate_used === null ? '—' : formatRsd(l.rate_used)}</td>

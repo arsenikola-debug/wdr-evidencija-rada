@@ -1,3 +1,4 @@
+import { formatDate, formatDateTime } from '../lib/format/date';
 import { useCallback, useEffect, useState } from 'react';
 import { Banner, EmptyState, Spinner } from '../components/Bits';
 import { messageForCode } from '../features/grid/errors';
@@ -369,7 +370,7 @@ export function ControlCenter() {
                     : formatNumber(detail.finding.threshold_value)}
                   {detail.config_used
                     ? ` · verzija ${detail.config_used.version} (od `
-                      + `${detail.config_used.valid_from})`
+                      + `${formatDate(detail.config_used.valid_from)})`
                     : ''}
                 </td>
               </tr>
@@ -380,7 +381,7 @@ export function ControlCenter() {
                   <td>Potvrdio</td>
                   <td>
                     {detail.finding.acknowledged_by} ·{' '}
-                    {new Date(detail.finding.acknowledged_at ?? '').toLocaleString('sr-Latn-RS')}
+                    {formatDateTime(detail.finding.acknowledged_at ?? '')}
                   </td>
                 </tr>
               )}
@@ -393,8 +394,7 @@ export function ControlCenter() {
           <p className="muted small">
             Nalaz je pokazatelj da nešto treba proveriti; nije dokaz nepravilnosti.
             {detail.run
-              ? ` Kontrola pokrenuta ${new Date(detail.run.started_at)
-                  .toLocaleString('sr-Latn-RS')}, verzija ${detail.run.engine_version}.`
+              ? ` Kontrola pokrenuta ${formatDateTime(detail.run.started_at)}, verzija ${detail.run.engine_version}.`
               : ''}
           </p>
 

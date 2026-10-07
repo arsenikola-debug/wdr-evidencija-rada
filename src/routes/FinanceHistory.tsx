@@ -1,3 +1,4 @@
+import { formatDateTime } from '../lib/format/date';
 import { formatPeriod } from '../features/finance/recap';
 import { BaseTypeChip } from '../components/BaseTypeChip';
 import { Link } from 'react-router-dom';
@@ -112,7 +113,7 @@ export function FinanceHistory() {
                     {h.transaction_type_label}
                   </span>
                 </td>
-                <td>{h.approved_at.slice(0, 16).replace('T', ' ')}</td>
+                <td>{formatDateTime(h.approved_at)}</td>
                 <td>{h.center_code} {h.transaction_type === 'PERIOD' && <BaseTypeChip type={h.base_type ?? null} />}</td>
                 <td>{formatPeriod(h.economic_period_start, h.economic_period_end)}</td>
                 <td>{h.total_stops ?? '—'}</td>

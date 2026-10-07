@@ -1,3 +1,4 @@
+import { formatDate } from '../lib/format/date';
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Banner, EmptyState, Spinner } from '../components/Bits';
@@ -276,7 +277,7 @@ export function Analytics({ section }: { section: Section }) {
                 <tbody>
                   {dailyRows.map((r) => (
                     <tr key={r.work_date}>
-                      <td style={{ width: '7rem' }}>{r.work_date}</td>
+                      <td style={{ width: '7rem' }}>{formatDate(r.work_date)}</td>
                       <td>
                         <div
                           className="bar"
@@ -431,7 +432,7 @@ export function Analytics({ section }: { section: Section }) {
               <tbody>
                 {daily.items.map((r, i) => (
                   <tr key={`${r.work_date}-${r.center_code ?? 'all'}-${i}`}>
-                    <td>{r.work_date}</td>
+                    <td>{formatDate(r.work_date)}</td>
                     <td>{r.center_code ?? 'svi'}</td>
                     <td className="num">{r.distinct_employees}</td>
                     <td className="num">{r.worked_employee_days}</td>

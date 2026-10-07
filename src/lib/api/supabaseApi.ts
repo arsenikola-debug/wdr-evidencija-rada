@@ -1,3 +1,4 @@
+import { formatPeriod } from '../format/date';
 import type { OvertimeComponentInput, OvertimeComponentResult } from './types';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { effectivePermissions, roleCodes } from '../../features/auth/permissions';
@@ -308,7 +309,7 @@ export class SupabaseWdrApi implements WdrApi {
       period_id: r.period_id as string,
       period_label:
         firstOf(r.submission_periods as { label?: string } | { label?: string }[] | null)?.label ??
-        `${r.period_start} – ${r.period_end}`,
+        formatPeriod(r.period_start as string, r.period_end as string),
       period_start: r.period_start as string,
       period_end: r.period_end as string,
       status: r.status as SubmissionListItem['status'],

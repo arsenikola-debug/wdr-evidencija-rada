@@ -1,3 +1,4 @@
+import { formatPeriod } from '../lib/format/date';
 import { useEffect, useMemo, useState } from 'react';
 import { Banner, StatusBadge } from './Bits';
 import { addDays, periodError, weekStart } from '../features/payouts/model';
@@ -13,9 +14,6 @@ import type {
 
 const TYPE_LABEL: Record<BaseType, string> = { KARNET: 'Karnet', OBUKA: 'Obuka', OSTALO: 'Ostalo' };
 
-function fmt(iso: string): string {
-  return `${iso.slice(8, 10)}.${iso.slice(5, 7)}.${iso.slice(0, 4)}`;
-}
 
 /**
  * Vrh stranice Unos (redizajn §1, K1): Centar · Period · Karnet/Obuka.
@@ -159,7 +157,7 @@ export function EntryBar({
               : TYPE_LABEL[baseType].toUpperCase()}
           </span>
           <span>·</span>
-          <span>{fmt(current.period_start)}–{fmt(current.period_end)}</span>
+          <span>{formatPeriod(current.period_start, current.period_end)}</span>
           <span>·</span>
           <StatusBadge status={current.status} />
         </div>

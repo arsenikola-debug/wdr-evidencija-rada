@@ -1,3 +1,4 @@
+import { formatDate, formatMonth } from '../lib/format/date';
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Banner, EmptyState, Spinner } from '../components/Bits';
@@ -211,7 +212,7 @@ export function AnalyticsCourierStops() {
             <tbody>
               {data.by_month.map((m) => (
                 <tr key={m.month}>
-                  <td>{m.month}</td>
+                  <td>{formatMonth(m.month)}</td>
                   <td>{formatNumber(m.stops)}</td>
                   <td>{formatRsd(m.approved_cost)}</td>
                 </tr>
@@ -225,7 +226,7 @@ export function AnalyticsCourierStops() {
             <tbody>
               {data.by_work_date.map((d) => (
                 <tr key={d.work_date}>
-                  <td>{d.work_date}</td>
+                  <td>{formatDate(d.work_date)}</td>
                   <td>{formatNumber(d.stops)}</td>
                   <td>{formatRsd(d.approved_cost)}</td>
                 </tr>

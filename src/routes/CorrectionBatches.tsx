@@ -1,3 +1,4 @@
+import { formatDate, formatPeriod } from '../lib/format/date';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Banner, EmptyState, Spinner } from '../components/Bits';
@@ -94,7 +95,7 @@ export function CorrectionBatches({ mode }: { mode: 'operator' | 'finance' }) {
               <select value={origId} onChange={(e) => setOrigId(e.target.value)}>
                 <option value="">—</option>
                 {approved.map((s) => (
-                  <option key={s.id} value={s.id}>{s.center_code} · {s.period_label}</option>
+                  <option key={s.id} value={s.id}>{s.center_code} · {formatPeriod(s.period_start, s.period_end)}</option>
                 ))}
               </select>
             </label>
@@ -159,7 +160,7 @@ export function CorrectionBatches({ mode }: { mode: 'operator' | 'finance' }) {
               {sel.items.map((a) => (
                 <tr key={a.id}>
                   <td>{a.employee_name}</td>
-                  <td>{a.related_work_date}</td>
+                  <td>{formatDate(a.related_work_date)}</td>
                   <td>{a.payment_type_code}</td>
                   <td>{a.direction_label}</td>
                   <td className="num">{a.units}</td>
@@ -193,7 +194,7 @@ export function CorrectionBatches({ mode }: { mode: 'operator' | 'finance' }) {
                 <ul className="picker-results">
                   {attachable.map((a) => (
                     <li key={a.id}>
-                      <span>{a.employee_name} · {a.related_work_date} · {a.payment_type_code} · {a.direction_label} {a.units}</span>
+                      <span>{a.employee_name} · {formatDate(a.related_work_date)} · {a.payment_type_code} · {a.direction_label} {a.units}</span>
                       <button type="button" className="btn btn-small"
                         onClick={() => void act(api.correctionBatchAttach(sel.batch.id, a.id))}>Dodaj</button>
                     </li>

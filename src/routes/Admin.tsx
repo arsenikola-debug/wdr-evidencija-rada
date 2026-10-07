@@ -1,3 +1,4 @@
+import { formatDate, formatDateTime } from '../lib/format/date';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Banner, EmptyState, Spinner } from '../components/Bits';
 import { messageForCode } from '../features/grid/errors';
@@ -525,8 +526,8 @@ export function Admin() {
                     <td className="num">{formatRsd(r.amount)}</td>
                     <td>{r.unit_type}</td>
                     <td>v{r.version}</td>
-                    <td>{r.valid_from}</td>
-                    <td>{r.valid_to ?? '—'}</td>
+                    <td>{formatDate(r.valid_from)}</td>
+                    <td>{formatDate(r.valid_to)}</td>
                     <td>{r.in_use ? 'da' : '—'}</td>
                   </tr>
                 ))}
@@ -736,7 +737,7 @@ export function Admin() {
                     <td className="num">{formatRsd(r.amount_per_unit)}</td>
                     <td className="num">{r.liters_per_unit ?? '—'}</td>
                     <td className="num">{formatRsd(r.price_per_liter)}</td>
-                    <td>{r.valid_from}</td>
+                    <td>{formatDate(r.valid_from)}</td>
                     <td>{r.in_use ? 'da' : '—'}</td>
                   </tr>
                 ))}
@@ -876,8 +877,8 @@ export function Admin() {
                       <td>{r.center_code}</td>
                       <td>{r.amount_per_stop}</td>
                       <td>{r.unit_type}</td>
-                      <td>{r.valid_from}</td>
-                      <td>{r.valid_to ?? '—'}</td>
+                      <td>{formatDate(r.valid_from)}</td>
+                      <td>{formatDate(r.valid_to)}</td>
                       <td>{r.version}</td>
                       <td>{r.active ? 'da' : 'ne'}</td>
                       <td className="muted small">{r.notes ?? ''}</td>
@@ -901,8 +902,8 @@ export function Admin() {
                         <td>{r.center_code}</td>
                         <td>{r.version}</td>
                         <td>{r.amount_per_stop}</td>
-                        <td>{r.valid_from}</td>
-                        <td>{r.valid_to ?? '—'}</td>
+                        <td>{formatDate(r.valid_from)}</td>
+                        <td>{formatDate(r.valid_to)}</td>
                         <td>{r.active ? 'da' : 'ne'}</td>
                         <td className="muted small">{r.notes ?? ''}</td>
                       </tr>
@@ -1000,8 +1001,8 @@ export function Admin() {
                 <tr key={p.id} className={p.valid_to ? 'row-muted' : ''}>
                   <td>{p.center_code ?? 'GLOBALNO'}</td>
                   <td>{p.included_iso_weekdays.map((d) => WEEKDAYS[d - 1]).join(', ')}</td>
-                  <td>{p.valid_from}</td>
-                  <td>{p.valid_to ?? '—'}</td>
+                  <td>{formatDate(p.valid_from)}</td>
+                  <td>{formatDate(p.valid_to)}</td>
                 </tr>
               ))}
             </tbody>
@@ -1086,7 +1087,7 @@ export function Admin() {
                       : `${r.threshold_value} ${r.threshold_unit ?? ''}`}
                   </td>
                   <td>{r.severity ?? r.default_severity}</td>
-                  <td>{r.valid_from ?? '—'}</td>
+                  <td>{formatDate(r.valid_from)}</td>
                   <td>{r.config_version ?? '—'}</td>
                   <td>
                     {r.status === 'ACTIVE' ? 'Aktivno'
@@ -1175,8 +1176,8 @@ export function Admin() {
                       <td>v{h.version}</td>
                       <td className="num">{h.threshold_value ?? '—'}</td>
                       <td>{h.severity}</td>
-                      <td>{h.valid_from}</td>
-                      <td>{h.valid_to ?? '—'}</td>
+                      <td>{formatDate(h.valid_from)}</td>
+                      <td>{formatDate(h.valid_to)}</td>
                       <td className="muted small">{h.notes ?? '—'}</td>
                     </tr>
                   ))}
@@ -1300,7 +1301,7 @@ export function Admin() {
                         <td>{VERIFICATION_LABEL[k] ?? k}</td>
                         <td><strong>{v.label}</strong></td>
                         <td>{v.verified_at
-                          ? new Date(v.verified_at).toLocaleString('sr-Latn-RS') : '—'}</td>
+                          ? formatDateTime(v.verified_at) : '—'}</td>
                         <td>{v.verified_by ?? '—'}</td>
                         <td>{v.environment ?? '—'}</td>
                       </tr>

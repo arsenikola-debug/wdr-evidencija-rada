@@ -174,7 +174,6 @@ export function MySubmissions() {
                     <span className="period-range">
                       {formatDay(s.period_start)} – {formatDay(s.period_end)}
                     </span>
-                    <span className="muted small period-label">{s.period_label}</span>
                   </td>
                   <td>
                     <StatusBadge status={s.status} />

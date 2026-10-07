@@ -1,3 +1,4 @@
+import { formatDate } from '../lib/format/date';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Banner, EmptyState, Spinner } from '../components/Bits';
 import { messageForCode } from '../features/grid/errors';
@@ -230,7 +231,7 @@ export function AdminImport() {
                       <td>{x.full_name}</td>
                       <td>{x.employee_code ?? '—'}</td>
                       <td>{x.center_code}</td>
-                      <td>{x.employment_start_date}</td>
+                      <td>{formatDate(x.employment_start_date)}</td>
                       <td>{x.assignment_valid_from}</td>
                     </tr>
                   ))}

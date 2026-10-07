@@ -1,3 +1,4 @@
+import { localizeIsoDates } from '../../lib/format/date';
 /**
  * Database messages are written for an operator, but they contain UUIDs and
  * technical detail. The grid shows these instead, keyed by the named codes the
@@ -94,7 +95,8 @@ export function messageForCode(
     if (/[0-9a-f]{8}-[0-9a-f]{4}/.test(fallback)) {
       return 'Unos nije prihvaćen. Osvežite stranicu i pokušajte ponovo.';
     }
-    return fallback;
+    // Poruka iz baze može sadržati ISO datum — prikazuje se u formatu 05.10.2026.
+    return localizeIsoDates(fallback);
   }
   return 'Došlo je do neočekivane greške.';
 }

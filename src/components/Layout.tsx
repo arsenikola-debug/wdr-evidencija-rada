@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../lib/auth/AuthProvider';
 import { isVisibleForProfile, resolveProfile } from '../features/auth/profile';
-import { NAV_GROUPS, headerShowsCenters, type IconName } from './navConfig';
+import { NAV_GROUPS, type IconName } from './navConfig';
+import { pendingAdditionalCount, type StopsQueueItem } from '../features/finance/additionalInbox';
 
 /**
  * Vizuelni shell. Rute, dozvole i ponašanje su nepromenjeni —
@@ -56,6 +57,8 @@ export function Layout() {
   const { pathname } = useLocation();
   const [collapsed, setCollapsed] = useState(false);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
+  // Finansije: broj dodatnih isplata (sve vrste + Stopovi) koje čekaju odobrenje.
+  const [pendingAdditional, setPendingAdditional] = useState(0);
 
   useEffect(() => {
     let alive = true;
@@ -73,17 +76,30 @@ export function Layout() {
         });
     };
 
-    loadUnread();
-    window.addEventListener('focus', loadUnread);
+    // Slanje dodatne isplate ili Stopova ne pravi in-app obaveštenje u bazi, pa se
+    // pending stanje izvodi iz postojećih redova za odobrenje oba toka.
+    const loadPending = () => {
+      if (!(can('payout.approve') || can('finance.queue.view'))) return;
+      void Promise.all([
+        can('payout.approve') ? api.payoutFinanceQueue(['SUBMITTED']).catch(() => []) : Promise.resolve([]),
+        can('finance.queue.view')
+          ? api.courierStopFinanceQueue().then((q) => q as StopsQueueItem[]).catch(() => [])
+          : Promise.resolve([]),
+      ]).then(([p, st]) => { if (alive) setPendingAdditional(pendingAdditionalCount(p, st)); });
+    };
 
-    const timer = window.setInterval(loadUnread, 30000);
+    const loadAll = () => { loadUnread(); loadPending(); };
+    loadAll();
+    window.addEventListener('focus', loadAll);
+
+    const timer = window.setInterval(loadAll, 30000);
 
     return () => {
       alive = false;
-      window.removeEventListener('focus', loadUnread);
+      window.removeEventListener('focus', loadAll);
       window.clearInterval(timer);
     };
-  }, [api, pathname]);
+  }, [api, pathname, can]);
 
   /**
    * Dvostruko sito, tim redom:
@@ -114,8 +130,6 @@ export function Layout() {
     return match?.label ?? 'WDR';
   }, [pathname]);
 
-  const centers = session?.centers.map((c) => c.center_code).join(', ') ?? '';
-  const showCenters = headerShowsCenters(pathname, profile.primary);
   const role = session?.roles?.join(' · ') || 'Bez uloge';
 
   return (
@@ -149,6 +163,15 @@ export function Layout() {
                 >
                   <NavIcon name={n.icon} />
                   <span className="nav-label">{n.label}</span>
+                  {n.to === '/finansije/dodatne-isplate' && pendingAdditional > 0 && (
+                    <span
+                      className="notification-badge"
+                      aria-label={`${pendingAdditional} dodatnih isplata čeka odobrenje`}
+                      title="Čeka odobrenje (sve vrste, uključujući Stopove)"
+                    >
+                      {pendingAdditional > 99 ? '99+' : pendingAdditional}
+                    </span>
+                  )}
                   {n.to === '/obavestenja' && unreadNotifications > 0 && (
                     <span
                       className="notification-badge"
@@ -216,10 +239,10 @@ export function Layout() {
 
           <span className="topbar-title">{current}</span>
           {/*
-            Finansije: zaglavlje prikazuje samo naziv stranice — bez nabrajanja svih
-            centara korisnika (autorizacija po centrima se ne menja).
+            Zaglavlje prikazuje SAMO naziv trenutne stranice — za sve uloge (Admin,
+            Finansije, Operater). Spisak centara korisnika se ne nabraja; prava i
+            autorizacija po centrima se time ne menjaju.
           */}
-          {centers && showCenters && <span className="topbar-context">Centri: {centers}</span>}
 
           <div className="app-user">
             {apiKind === 'mock' && (

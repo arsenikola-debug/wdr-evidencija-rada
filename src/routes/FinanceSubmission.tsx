@@ -1,3 +1,4 @@
+import { formatDate, formatDateTime, formatMonth, formatPeriod } from '../lib/format/date';
 import { BaseTypeChip } from '../components/BaseTypeChip';
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
@@ -7,7 +8,6 @@ import { formatRsd } from '../features/grid/model';
 import {
   approvalState,
   financeApprovalSummary,
-  formatPeriod,
   monthAllocation,
   pricingProblemText,
   totalForDisplay,
@@ -127,7 +127,7 @@ export function FinanceSubmission() {
           </h1>
           <p className="muted">
             Poslao {s.submitted_by ?? '—'}
-            {s.submitted_at ? ` · ${new Date(s.submitted_at).toLocaleString('sr-Latn-RS')}` : ''}
+            {s.submitted_at ? ` · ${formatDateTime(s.submitted_at)}` : ''}
           </p>
         </div>
         <Link className="btn btn-quiet" to="/finansije">← Red za odobrenje</Link>
@@ -142,7 +142,7 @@ export function FinanceSubmission() {
           <div className="small">
             Odobrio: {data.incomplete_override.by ?? '—'}
             {data.incomplete_override.at
-              ? ` · ${new Date(data.incomplete_override.at).toLocaleString('sr-Latn-RS')}`
+              ? ` · ${formatDateTime(data.incomplete_override.at)}`
               : ''}
           </div>
           <div className="small">
@@ -163,7 +163,7 @@ export function FinanceSubmission() {
         <Banner kind="info">
           Period preseca dva meseca. Odobrenje se <strong>ne deli</strong> — jedan obračun i
           jedno odobrenje. Analitika raspoređuje svaku stavku po njenom datumu rada:{' '}
-          {months.map((m) => `${m.month}: ${formatRsd(m.amount)}`).join(' · ')}.
+          {months.map((m) => `${formatMonth(m.month)}: ${formatRsd(m.amount)}`).join(' · ')}.
         </Banner>
       )}
 
@@ -234,7 +234,7 @@ export function FinanceSubmission() {
                 {data.blocking.map((l) => (
                   <tr key={l.line_no} className="row-error">
                     <td>{l.employee_name}</td>
-                    <td>{l.work_date}</td>
+                    <td>{formatDate(l.work_date)}</td>
                     <td>{l.payment_type_code ?? KIND_LABEL[l.line_kind]}</td>
                     <td>{l.center_code ?? '—'}</td>
                     <td>
@@ -345,7 +345,7 @@ export function FinanceSubmission() {
                   <span className="muted small">
                     {' '}— {w.acknowledged_by ?? '—'}
                     {w.acknowledged_at
-                      ? `, ${new Date(w.acknowledged_at).toLocaleString('sr-Latn-RS')}`
+                      ? `, ${formatDateTime(w.acknowledged_at)}`
                       : ''}
                   </span>
                 )}
@@ -362,7 +362,7 @@ export function FinanceSubmission() {
                 <li key={i}>
                   <strong>{c.author ?? '—'}</strong>{' '}
                   <span className="muted small">
-                    {new Date(c.created_at).toLocaleString('sr-Latn-RS')}
+                    {formatDateTime(c.created_at)}
                   </span>
                   <div>{c.message}</div>
                 </li>
@@ -379,7 +379,7 @@ export function FinanceSubmission() {
           <Banner kind="success">
             Odobreno {formatRsd(data.approval.approved_amount)} RSD ·{' '}
             {data.approval.approved_by ?? '—'} ·{' '}
-            {new Date(data.approval.approved_at).toLocaleString('sr-Latn-RS')}
+            {formatDateTime(data.approval.approved_at)}
           </Banner>
           <p className="muted small">
             Odobreno znači da je iznos potvrđen i raspoloživ za ovaj proces. Ne znači
@@ -441,7 +441,7 @@ export function FinanceSubmission() {
                 <strong>
                   {total.kind === 'complete' ? `${formatRsd(total.amount)} RSD` : '—'}
                 </strong>{' '}
-                za period {s.period_start} – {s.period_end}.
+                za period {formatPeriod(s.period_start, s.period_end)}.
               </span>
             </label>
             <button

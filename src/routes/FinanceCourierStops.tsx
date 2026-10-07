@@ -1,4 +1,6 @@
+import { formatDate, formatDateTime, formatPeriod } from '../lib/format/date';
 import { useCallback, useEffect, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Banner, EmptyState, Spinner } from '../components/Bits';
 import { messageForCode } from '../features/grid/errors';
 import { formatRsd } from '../features/grid/model';
@@ -42,6 +44,8 @@ export function FinanceCourierStops() {
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [reason, setReason] = useState('');
+  const [params] = useSearchParams();
+  const deepId = params.get('prijava');
 
   const fail = useCallback((err: unknown) => {
     const code = err instanceof WdrApiError ? err.code : null;
@@ -73,12 +77,15 @@ export function FinanceCourierStops() {
     }
   }, [api, fail]);
 
+  // Otvaranje iz objedinjenog prikaza „Dodatne isplate" (?prijava=<id>).
+  useEffect(() => { if (deepId) void open(deepId); }, [deepId, open]);
+
   async function approve() {
     if (!openId || !detail) return;
     const total = detail.totals.total_amount;
     if (!window.confirm(
       `Odobravate stopove kurira — centar ${detail.lines[0]?.center_code ?? ''}, `
-      + `period ${detail.submission.period_start}–${detail.submission.period_end}.\n\n`
+      + `period ${formatPeriod(detail.submission.period_start, detail.submission.period_end)}.\n\n`
       + `Ukupno stopova: ${detail.totals.total_stops}\n`
       + `Ukupno za odobrenje: ${total === null ? '—' : formatRsd(total)}\n\n`
       + 'Odobrenje je konačno i pravi nepromenljiv snapshot. Nastaviti?')) return;
@@ -121,7 +128,8 @@ export function FinanceCourierStops() {
     <div className="page">
       <div className="preview-head">
         <div>
-          <h1>Finansije — stopovi kurira</h1>
+          <p className="small"><Link to="/finansije/dodatne-isplate">← Dodatne isplate</Link></p>
+          <h1>Dodatne isplate — Stopovi</h1>
           <p className="muted">Odobravanje prijava iz evidencije stopova kurira.</p>
         </div>
       </div>
@@ -146,10 +154,10 @@ export function FinanceCourierStops() {
               <tr key={q.submission_id}>
                 <td><span className="chip">Stopovi kurira</span></td>
                 <td>{q.center_code}</td>
-                <td>{q.period_start} – {q.period_end}</td>
+                <td>{formatPeriod(q.period_start, q.period_end)}</td>
                 <td>{STATUS_LABEL[q.status]}</td>
                 <td>{q.submitted_by ?? '—'}</td>
-                <td>{q.submitted_at?.slice(0, 16).replace('T', ' ') ?? '—'}</td>
+                <td>{formatDateTime(q.submitted_at)}</td>
                 <td>{q.total_stops}</td>
                 <td>
                   {q.total_calculated_amount === null
@@ -172,7 +180,7 @@ export function FinanceCourierStops() {
 
       {detail && (
         <>
-          <h3>Detalj — {detail.submission.period_start} – {detail.submission.period_end}</h3>
+          <h3>Detalj — {formatPeriod(detail.submission.period_start, detail.submission.period_end)}</h3>
           {detail.is_approved && (
             <Banner kind="success">
               Odobreno. Prikazane su nepromenljive vrednosti iz snapshot-a; ne
@@ -186,9 +194,9 @@ export function FinanceCourierStops() {
             </thead>
             <tbody>
               {detail.lines.map((l, i) => (
-                <tr key={l.employee_id ? `${l.employee_id}|${l.work_date}` : i}>
+                <tr key={l.employee_id ? `${l.employee_id}|${formatDate(l.work_date)}` : i}>
                   <td>{l.employee_name}</td>
-                  <td>{l.work_date}</td>
+                  <td>{formatDate(l.work_date)}</td>
                   <td>{l.center_code}</td>
                   <td>{l.stop_count}</td>
                   <td>{l.rate_used === null ? '—' : formatRsd(l.rate_used)}</td>
@@ -286,7 +294,7 @@ function CorrectionsQueue() {
               <td><span className="chip chip-warn">Korekcija stopova</span></td>
               <td>{c.center_code}</td>
               <td>{c.employee_name}</td>
-              <td>{c.related_work_date}</td>
+              <td>{formatDate(c.related_work_date)}</td>
               <td>{c.original_stop_count}</td>
               <td>{c.delta_stop_count > 0 ? `+${c.delta_stop_count}` : c.delta_stop_count}
                 {' '}({c.direction_label})</td>

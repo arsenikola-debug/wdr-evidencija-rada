@@ -1,3 +1,5 @@
+import { sortByCenter } from './groupByCenter';
+import { formatPeriod } from '../../lib/format/date';
 import type {
   AdminPayoutReport,
   IsoDate,
@@ -211,7 +213,7 @@ type Worksheet = ReturnType<Workbook['addWorksheet']>;
 
 const MONEY = '#,##0.00';
 const QTY = '#,##0.##';
-const DATE = 'dd.mm.yyyy';
+const DATE = 'dd.mm.yyyy.'; // jedinstven UI format: 05.10.2026.
 
 function toDate(iso: IsoDate): Date {
   return new Date(`${iso}T00:00:00Z`);
@@ -257,7 +259,8 @@ export function buildPayoutWorkbook(ExcelJS: ExcelJsModule, report: AdminPayoutR
     { header: 'Prevoz (odvojeno)', key: 'transport', width: 14, fmt: MONEY },
   );
   s1.columns = s1Cols.map((c) => ({ header: c.header, key: c.key, width: c.width }));
-  for (const r of report.by_employee) {
+  // Više centara: redovi grupisani po centru (kolona Centar u svakom redu).
+  for (const r of sortByCenter(report.by_employee, (x) => x.center_code, (x, y) => x.employee_name.localeCompare(y.employee_name, 'sr'))) {
     const row: Record<string, string | number | null> = {
       code: r.employee_code ?? '',
       name: r.employee_name,
@@ -294,7 +297,7 @@ export function buildPayoutWorkbook(ExcelJS: ExcelJsModule, report: AdminPayoutR
     { header: 'U više kategorija', key: 'multi', width: 14 },
   ];
   s2.columns = s2Cols;
-  for (const d of report.by_day) {
+  for (const d of sortByCenter(report.by_day, (x) => x.center_code, (x, y) => x.work_date.localeCompare(y.work_date))) {
     const row: Record<string, string | number | Date> = {
       date: toDate(d.work_date),
       center: d.center_code,
@@ -333,7 +336,7 @@ export function buildPayoutWorkbook(ExcelJS: ExcelJsModule, report: AdminPayoutR
   // ---- Sheet 4: Napomene ----------------------------------------------------
   const s4 = wb.addWorksheet('Napomene');
   s4.columns = [{ header: 'Osnova izveštaja', key: 'n', width: 100 }];
-  s4.addRow({ n: `Period: ${report.period.from} – ${report.period.to}` });
+  s4.addRow({ n: `Period: ${formatPeriod(report.period.from, report.period.to)}` });
   s4.addRow({ n: `Zaposlenih: ${report.totals.employees}` });
   for (const n of report.notes) s4.addRow({ n });
   s4.addRow({ n: 'Višestruka kategorija istog dana NIJE automatski greška — proveriti da li je kombinacija očekivana.' });

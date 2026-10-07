@@ -1,3 +1,4 @@
+import { formatDate, formatPeriod } from '../lib/format/date';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Banner, EmptyState, Spinner } from '../components/Bits';
 import { messageForCode } from '../features/grid/errors';
@@ -267,7 +268,7 @@ export function MyAdjustments() {
                   .filter((sm) => sm.status === 'FINANCE_APPROVED' || sm.status === 'CLOSED')
                   .map((sm) => (
                     <option key={sm.id} value={sm.id}>
-                      {sm.center_code} · {sm.period_start} – {sm.period_end}
+                      {sm.center_code} · {formatPeriod(sm.period_start, sm.period_end)}
                     </option>
                   ))}
               </select>
@@ -295,7 +296,7 @@ export function MyAdjustments() {
                   {signedAmountLabel(preview.amount_signed)} RSD
                 </span>
                 <span className="muted small">
-                  Pravilo važeće na {preview.related_work_date}. Iznos nije izmenljiv.
+                  Pravilo važeće na {formatDate(preview.related_work_date)}. Iznos nije izmenljiv.
                 </span>
               </>
             ) : (
@@ -385,7 +386,7 @@ export function MyAdjustments() {
                 return (
                   <tr key={a.id} className={a.errors.length > 0 ? 'row-error' : ''}>
                     <td>{a.employee_name}</td>
-                    <td>{a.related_work_date}</td>
+                    <td>{formatDate(a.related_work_date)}</td>
                     <td>{a.direction_label}</td>
                     <td>{a.payment_type_code}</td>
                     <td className="num">{a.units}</td>
@@ -419,7 +420,7 @@ export function MyAdjustments() {
                       )}
                       {a.approval && (
                         <span className="muted small">
-                          Odobreno {new Date(a.approval.approved_at).toLocaleDateString('sr-Latn-RS')}
+                          Odobreno {formatDate(a.approval.approved_at)}
                           {' '}· ekonomski datum {a.approval.economic_date}
                         </span>
                       )}

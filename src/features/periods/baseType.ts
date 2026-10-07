@@ -1,3 +1,4 @@
+import { formatPeriod } from '../../lib/format/date';
 import type {
   PeriodSubmissionSlot,
   SubmissionBaseType,
@@ -38,7 +39,7 @@ export function decideOpen(slots: PeriodSubmissionSlot[], type: SubmissionBaseTy
   if (overlapping) {
     return {
       kind: 'conflict',
-      message: `Već postoji ${TYPE_NAME[type]} prijava ${overlapping.period_start} – ${overlapping.period_end} `
+      message: `Već postoji ${TYPE_NAME[type]} prijava ${formatPeriod(overlapping.period_start, overlapping.period_end)} `
         + 'koja se preklapa sa izabranim periodom. Izaberite njen tačan raspon ili drugi period.',
     };
   }
