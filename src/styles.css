@@ -1411,3 +1411,27 @@ kbd {
 .users-credentials-list dd { margin: 0; }
 .users-temp-password { font-size: 16px; letter-spacing: 0.04em; user-select: all; padding: 2px 6px;
   border: 1px solid var(--border); border-radius: 6px; background: var(--surface-muted); }
+
+/* --- Admin → Korisnici: poravnanje tabele i sažeti centri (UX korekcija) ------ */
+/* Svaka ćelija ostaje table-cell i poravnata je uz vrh: red je jedna celina. */
+.users-table { table-layout: fixed; width: 100%; }
+.users-table th, .users-table td { vertical-align: top; }
+.users-table td { overflow-wrap: anywhere; }
+.users-table .users-col-name { width: 24%; }
+.users-table .users-col-roles { width: 17%; }
+.users-table .users-col-centers { width: 27%; }
+.users-table .users-col-status { width: 12%; }
+.users-table .users-col-login { width: 12%; }
+.users-table .users-col-actions { width: 8%; }
+.users-table td.users-actions-cell { text-align: right; white-space: nowrap; }
+.users-table td.users-actions-cell .btn { vertical-align: top; }
+.users-centers-summary { display: inline-block; line-height: 1.35; }
+.users-centers-list > div { line-height: 1.35; }
+.users-centers-admin { padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--surface-muted); }
+.users-centers-admin p { margin: 4px 0 0; }
+.users-centers-picker { display: flex; flex-direction: column; gap: 6px; }
+.users-centers-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.users-write { align-items: center; flex-wrap: wrap; }
+.users-centers-detail { max-height: 240px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; }
+.users-centers-detail .users-centers { max-width: none; width: 100%; }

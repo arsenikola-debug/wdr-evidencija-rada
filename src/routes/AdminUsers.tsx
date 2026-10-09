@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Banner, EmptyState, Spinner } from '../components/Bits';
 import { SearchableMultiSelect, type MultiOption } from '../components/SearchableMultiSelect';
+import { CenterAccessPicker, UserCentersCell } from '../components/UserCenters';
 import {
   EMPTY_FILTER,
   EMPTY_NEW_USER,
@@ -14,6 +15,8 @@ import {
   accessUpdatePayload,
   auditLabel,
   credentialsText,
+  defaultBulkWrite,
+  grantsAllCenters,
   deactivateBlocker,
   draftFromUser,
   draftProblems,
@@ -189,6 +192,10 @@ export function AdminUsers() {
       ) : (
         <div className="table-scroll">
           <table className="list list-compact users-table">
+            <colgroup>
+              <col className="users-col-name" /><col className="users-col-roles" /><col className="users-col-centers" />
+              <col className="users-col-status" /><col className="users-col-login" /><col className="users-col-actions" />
+            </colgroup>
             <thead>
               <tr>
                 <th>Ime i prezime</th><th>Uloge</th><th>Centri</th><th>Status</th>
@@ -207,23 +214,15 @@ export function AdminUsers() {
                       <div className="muted small">{u.email}</div>
                     </td>
                     <td>{sortByLabel(u.roles, (r) => r.name).map((r) => r.name).join(', ') || '—'}</td>
-                    <td className="small">
-                      {u.all_centers
-                        ? <span title="Pravo centers.manage">Svi centri (administrator)</span>
-                        : u.centers.length === 0 ? '—'
-                        : sortCenters(u.centers.map((c) => ({ ...c, code: c.center_code, name: c.center_name })))
-                          .map((c) => (
-                            <div key={c.center_code}>
-                              {centerLabel(c)}
-                              {!c.can_write && <span className="muted"> · samo pregled</span>}
-                            </div>
-                          ))}
+                    <td className="small users-centers-cell">
+                      <UserCentersCell user={u} catalog={list.centers} />
                     </td>
                     <td><span className={`chip chip-status-${st.tone}`}>{st.label}</span></td>
                     <td className="small">
                       {a ? (a.last_sign_in_at ? formatDateTime(a.last_sign_in_at) : 'nikad') : '—'}
                     </td>
-                    <td className="row-actions">
+                    {/* Ćelija ostaje table-cell (bez display:flex), dugme uz vrh reda. */}
+                    <td className="users-actions-cell">
                       <button type="button" className="btn btn-small" onClick={() => {
                         setNotice(null); setEditingId(u.profile_id);
                       }}>Izmeni</button>
@@ -282,13 +281,6 @@ export function AdminUsers() {
 // Novi korisnik
 // =============================================================================
 
-function centerOptions(list: AdminUserList, keep: readonly string[] = []): MultiOption[] {
-  // Po NAZIVU centra (sortCenters); red opcije: „B6 — Rakovica" (šifra + naziv).
-  return sortCenters(list.centers)
-    .filter((c) => c.active || keep.includes(c.code))
-    .map((c) => ({ value: c.code, label: c.code, hint: `— ${c.name}${c.active ? '' : ' (neaktivan)'}` }));
-}
-
 function roleMultiOptions(list: AdminUserList): MultiOption[] {
   return sortByLabel(list.roles, (r) => r.name).map((r) => ({ value: r.code, label: r.name, hint: r.code }));
 }
@@ -306,12 +298,14 @@ function NewUserDialog({
   const [errors, setErrors] = useState<NewUserErrors>({});
   const [error, setError] = useState<{ text: string; profileId?: string; unlinkedAuth?: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
+  // Uloga sa centers.manage → svi centri; ručni izbor se ne traži (i ne šalje).
+  const adminAll = grantsAllCenters(list.roles, form.role_codes);
 
   async function create(linkExisting: boolean) {
     setBusy(true);
     setError(null);
     try {
-      const r = await api.adminCreateUser({ ...newUserPayload(form), link_existing_auth: linkExisting });
+      const r = await api.adminCreateUser({ ...newUserPayload(form, adminAll), link_existing_auth: linkExisting });
       await onCreated({ email: r.email, full_name: r.full_name, temporary_password: r.temporary_password });
     } catch (err) {
       setError({
@@ -332,7 +326,7 @@ function NewUserDialog({
 
     const warnings = wideningWarnings(null, {
       role_codes: form.role_codes,
-      centers: form.center_codes.map((code) => ({ code, write: form.center_write })),
+      centers: adminAll ? [] : form.center_codes.map((code) => ({ code, write: form.center_write })),
       overrides: [],
     }, list);
     const roleNames = list.roles.filter((r) => form.role_codes.includes(r.code)).map((r) => r.name);
@@ -340,8 +334,9 @@ function NewUserDialog({
       `Korisnik: ${fullNameOf(form)}`,
       `Email: ${form.email.trim().toLowerCase()}`,
       `Uloge: ${roleNames.join(', ')}`,
-      `Centri: ${form.center_codes.length === 0 ? 'bez centra' : form.center_codes.join(', ')}`
-        + (form.center_codes.length > 0 ? (form.center_write ? ' (upis i pregled)' : ' (samo pregled)') : ''),
+      `Centri: ${adminAll ? 'Svi centri (administrator)'
+        : form.center_codes.length === 0 ? 'bez centra'
+        : `${form.center_codes.length} · ${form.center_write ? 'upis i pregled' : 'samo pregled'}`}`,
       ...(warnings.length ? ['', ...warnings] : []),
       '',
       'Biće generisana privremena lozinka koju vi prosleđujete korisniku (ne šalje se email).',
@@ -414,26 +409,16 @@ function NewUserDialog({
         </div>
 
         <div className="users-form-block">
-          <SearchableMultiSelect
+          <CenterAccessPicker
             id="nu-centers"
             label="Centri"
-            options={centerOptions(list)}
-            value={form.center_codes}
-            onChange={(v) => setForm({ ...form, center_codes: v })}
-            emptyText="Bez centra"
-            searchPlaceholder="Pretraga centra…"
-            sort={false}
+            catalog={list.centers}
+            selected={form.center_codes.map((code) => ({ code, write: form.center_write }))}
+            onChange={(next) => setForm({ ...form, center_codes: next.map((c) => c.code) })}
+            write={form.center_write}
+            onWriteChange={(w) => setForm({ ...form, center_write: w })}
+            adminAll={adminAll}
           />
-          <div className="segmented users-write" role="radiogroup" aria-label="Nivo pristupa centrima">
-            <label><input type="radio" checked={form.center_write}
-              onChange={() => setForm({ ...form, center_write: true })} /> Upis i pregled</label>
-            <label><input type="radio" checked={!form.center_write}
-              onChange={() => setForm({ ...form, center_write: false })} /> Samo pregled</label>
-          </div>
-          <p className="muted small">
-            Upis važi samo uz pravo iz uloge (npr. izmena unosa). Pristup svim centrima, uključujući
-            buduće, daje isključivo pravo <code>centers.manage</code> (administratorska uloga).
-          </p>
         </div>
 
         <div className="modal-actions">
@@ -501,6 +486,10 @@ function EditUserDialog({
   const payload = accessUpdatePayload(user, draft, canRoles, reason);
   const dirty = hasAccessChanges(payload);
   const keepCenters = user.centers.map((c) => c.center_code);
+  // Efektivni centers.manage iz NACRTA (uloge + izuzeci) — isto pravilo kao baza.
+  // Bez roles.manage uloge se ne mogu menjati, pa važi stanje sa servera.
+  const adminAll = canRoles ? grantsAllCenters(list.roles, draft.role_codes, draft.overrides) : user.all_centers;
+  const [bulkWrite, setBulkWrite] = useState(() => defaultBulkWrite(draftFromUser(user).centers));
 
   const rows = useMemo(() => permissionRows(
     list.permissions, list.roles, draft.role_codes, draft.overrides, list.sensitive_permissions,
@@ -596,45 +585,19 @@ function EditUserDialog({
         {/* ------------------------------------------------------ centri -- */}
         <section className="users-form-block">
           <h3>Centri</h3>
-          {user.all_centers && (
-            <p className="muted small">
-              Uloga ovog korisnika daje <code>centers.manage</code>, pa vidi <strong>sve centre</strong>
-              {' '}bez obzira na listu ispod.
-            </p>
-          )}
-          <SearchableMultiSelect
+          <CenterAccessPicker
             id="eu-centers"
             label="Pristup centrima"
-            options={centerOptions(list, keepCenters)}
-            value={draft.centers.map((c) => c.code)}
-            onChange={(codes) => setDraft({
-              ...draft,
-              centers: codes.map((code) => draft.centers.find((c) => c.code === code) ?? { code, write: true }),
-            })}
-            emptyText="Bez centra"
-            sort={false}
+            catalog={list.centers}
+            keepCodes={keepCenters}
+            selected={draft.centers}
+            onChange={(next) => setDraft({ ...draft, centers: next })}
+            write={bulkWrite}
+            onWriteChange={setBulkWrite}
+            perCenter
+            adminAll={adminAll}
+            existingExplicitCount={draft.centers.length}
           />
-          {draft.centers.length > 0 && (
-            <table className="list list-compact users-centers">
-              <tbody>
-                {sortCenters(draft.centers.map((c) => ({
-                  ...c, name: list.centers.find((x) => x.code === c.code)?.name ?? c.code,
-                }))).map((c) => (
-                  <tr key={c.code}>
-                    <td>{centerLabel(c)}</td>
-                    <td>
-                      <label className="users-inline">
-                        <input type="checkbox" checked={c.write} onChange={(e) => setDraft({
-                          ...draft,
-                          centers: draft.centers.map((x) => (x.code === c.code ? { ...x, write: e.target.checked } : x)),
-                        })} /> upis
-                      </label>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
         </section>
 
         {/* ------------------------------------------------------- prava -- */}

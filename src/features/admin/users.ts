@@ -18,7 +18,7 @@ import type {
   AdminUserRow,
 } from '../../lib/api/types';
 import { sensitiveChanges } from './config';
-import { sortByLabel } from '../../lib/format/sort';
+import { centerLabel, sortByLabel, sortCenters } from '../../lib/format/sort';
 
 // ----------------------------------------------------------------- tekst ----
 
@@ -83,13 +83,18 @@ export function fullNameOf(f: Pick<NewUserForm, 'first_name' | 'last_name'>): st
   return `${f.first_name.trim()} ${f.last_name.trim()}`.replace(/\s+/g, ' ').trim();
 }
 
-export function newUserPayload(f: NewUserForm): AdminCreateUserInput {
+/**
+ * `allCenters` = izabrane uloge daju centers.manage → centri se NE šalju (uloga već
+ * daje sve centre, uključujući buduće); izbor u formi ostaje sačuvan ako se uloga promeni.
+ */
+export function newUserPayload(f: NewUserForm, allCenters = false): AdminCreateUserInput {
   return {
     first_name: f.first_name.trim(),
     last_name: f.last_name.trim(),
     email: normalizeEmail(f.email),
     role_codes: [...f.role_codes],
-    center_access: [...f.center_codes].sort().map((code) => ({ center_code: code, can_write: f.center_write })),
+    center_access: allCenters ? []
+      : [...f.center_codes].sort().map((code) => ({ center_code: code, can_write: f.center_write })),
     permission_overrides: null,
   };
 }
@@ -393,4 +398,110 @@ export function auditLabel(action: string): string {
 /** Semantički događaji idu prvi; tehnički trigger zapisi se mogu sakriti. */
 export function isTechnicalAudit(action: string): boolean {
   return action === 'ADMIN_USER_ACCESS_SET' || /^(USER_ROLE|USER_CENTER_ACCESS|USER_PERMISSION_OVERRIDE)_/.test(action);
+}
+
+// ------------------------------------------------------------------ centri ----
+//
+// Samo PRIKAZ i POMOĆ pri izboru. Semantika ostaje ista kao u bazi:
+//  * `centers.manage` (iz uloge ili GRANT izuzetka, ako nije REVOKE) = pristup svim
+//    centrima, uključujući buduće (app.has_center);
+//  * sve ostalo je EKSPLICITAN skup redova user_center_access — i kada sadrži sve
+//    trenutno postojeće centre, to NIJE pristup budućim centrima.
+
+export const ALL_CENTERS_PERMISSION = 'centers.manage';
+
+/** Da li izabrane uloge + izuzeci efektivno daju centers.manage — isto pravilo kao app.profile_has_perm. */
+export function grantsAllCenters(
+  roles: readonly AdminRoleCatalogItem[],
+  roleCodes: readonly string[],
+  overrides: ReadonlyArray<{ permission_code: string; mode: 'GRANT' | 'REVOKE' }> = [],
+): boolean {
+  const o = overrides.find((x) => x.permission_code === ALL_CENTERS_PERMISSION);
+  if (o?.mode === 'REVOKE') return false;
+  if (o?.mode === 'GRANT') return true;
+  return roles.some((r) => roleCodes.includes(r.code) && r.permissions.includes(ALL_CENTERS_PERMISSION));
+}
+
+/** „1 centar", „3 centra", „8 centara", „21 centar", „12 centara". */
+export function centersCountLabel(n: number): string {
+  const m10 = n % 10;
+  const m100 = n % 100;
+  if (m10 === 1 && m100 !== 11) return `${n} centar`;
+  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return `${n} centra`;
+  return `${n} centara`;
+}
+
+export type CentersSummaryKind = 'admin' | 'none' | 'all_current' | 'partial' | 'list';
+
+export interface CentersSummary {
+  kind: CentersSummaryKind;
+  /** Jedan red za tabelu. */
+  label: string;
+  mode: 'write' | 'read' | 'mixed' | null;
+  /** Pojedinačni centri „B6 — Rakovica · samo pregled", abecedno po nazivu (za tooltip / listu). */
+  details: string[];
+}
+
+/** Do ovoliko centara prikazuju se pojedinačno; više od toga — sažeto. */
+export const CENTERS_LIST_LIMIT = 3;
+
+function modeText(write: number, read: number): string {
+  if (read === 0) return 'upis i pregled';
+  if (write === 0) return 'samo pregled';
+  return `${write} upis i pregled, ${read} samo pregled`;
+}
+
+/**
+ * Sažet prikaz centara korisnika. „Svi trenutni centri" znači: korisnik ima
+ * eksplicitno dodeljen SVAKI trenutno aktivan centar — ne i buduće centre.
+ * Mešoviti režim se nikad ne sažima u netačan zbir.
+ */
+export function centersSummary(
+  u: Pick<AdminUserRow, 'all_centers' | 'centers'>,
+  catalog: ReadonlyArray<{ code: string; name: string; active: boolean }>,
+): CentersSummary {
+  if (u.all_centers) {
+    return { kind: 'admin', label: 'Svi centri (administrator)', mode: null, details: [] };
+  }
+  if (u.centers.length === 0) return { kind: 'none', label: '—', mode: null, details: [] };
+
+  const sorted = sortCenters(u.centers.map((c) => ({ ...c, code: c.center_code, name: c.center_name })));
+  const details = sorted.map((c) => `${centerLabel(c)} · ${c.can_write ? 'upis i pregled' : 'samo pregled'}`);
+  const write = u.centers.filter((c) => c.can_write).length;
+  const read = u.centers.length - write;
+  const mode = read === 0 ? 'write' : write === 0 ? 'read' : 'mixed';
+
+  const mine = new Set(u.centers.map((c) => c.center_code));
+  const active = catalog.filter((c) => c.active);
+  if (active.length > 0 && active.every((c) => mine.has(c.code))) {
+    return { kind: 'all_current', label: `Svi trenutni centri · ${modeText(write, read)}`, mode, details };
+  }
+  if (u.centers.length <= CENTERS_LIST_LIMIT) return { kind: 'list', label: details.join(', '), mode, details };
+  return { kind: 'partial', label: `${centersCountLabel(u.centers.length)} · ${modeText(write, read)}`, mode, details };
+}
+
+export interface CenterChoice { code: string; write: boolean }
+
+/**
+ * „Označi sve": svi AKTIVNI centri. Već izabrani zadržavaju svoj režim (i
+ * neaktivni koji su već dodeljeni ostaju); novododati dobijaju izabrani režim.
+ */
+export function bulkSelectCenters(
+  current: readonly CenterChoice[],
+  catalog: ReadonlyArray<{ code: string; active: boolean }>,
+  write: boolean,
+): CenterChoice[] {
+  const byCode = new Map(current.map((c) => [c.code, c]));
+  for (const c of catalog) if (c.active && !byCode.has(c.code)) byCode.set(c.code, { code: c.code, write });
+  return [...byCode.values()];
+}
+
+/** „Primeni režim na sve izabrane". */
+export function applyModeToAll(current: readonly CenterChoice[], write: boolean): CenterChoice[] {
+  return current.map((c) => ({ ...c, write }));
+}
+
+/** Podrazumevani režim za nove centre u izmeni: ako su svi postojeći „samo pregled" — pregled. */
+export function defaultBulkWrite(current: readonly CenterChoice[]): boolean {
+  return !(current.length > 0 && current.every((c) => !c.write));
 }
