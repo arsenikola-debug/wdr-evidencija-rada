@@ -3,6 +3,7 @@ import { Layout } from './components/Layout';
 import { AuthProvider } from './lib/auth/AuthProvider';
 import { DailyEntry } from './routes/DailyEntry';
 import { Admin } from './routes/Admin';
+import { AdminEntryGate } from './components/AdminNavigation';
 import { AdminReports } from './routes/AdminReports';
 import { AdminPayouts } from './routes/AdminPayouts';
 import { AdminImport } from './routes/AdminImport';
@@ -140,8 +141,13 @@ export default function App() {
           <Route
             path="/administracija"
             element={
-              <RequireAuth permission="centers.manage">
-                <Admin />
+              // Landing: bar jedan administrativni modul. Sekcije (Centri, Smene, …)
+              // i dalje traže centers.manage unutar stranice; direktne rute ispod
+              // zadržavaju svoje RequireAuth uslove.
+              <RequireAuth>
+                <AdminEntryGate>
+                  <Admin />
+                </AdminEntryGate>
               </RequireAuth>
             }
           />

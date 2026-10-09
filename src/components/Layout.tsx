@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../lib/auth/AuthProvider';
-import { isVisibleForProfile, resolveProfile } from '../features/auth/profile';
-import { NAV_GROUPS, type IconName } from './navConfig';
+import { resolveProfile } from '../features/auth/profile';
+import { NAV_GROUPS, navItemVisible, type IconName } from './navConfig';
 import { pendingAdditionalCount, type StopsQueueItem } from '../features/finance/additionalInbox';
 
 /**
@@ -115,7 +115,7 @@ export function Layout() {
       NAV_GROUPS.map((g) => ({
         ...g,
         items: g.items.filter(
-          (i) => isVisibleForProfile(profile, i.profiles) && (!i.permission || can(i.permission)),
+          (i) => navItemVisible(i, profile, can),
         ),
       })).filter((g) => g.items.length > 0),
     [can, profile],

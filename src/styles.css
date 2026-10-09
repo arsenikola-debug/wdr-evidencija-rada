@@ -1435,3 +1435,38 @@ kbd {
 .users-write { align-items: center; flex-wrap: wrap; }
 .users-centers-detail { max-height: 240px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; }
 .users-centers-detail .users-centers { max-width: none; width: 100%; }
+
+/* --- Administracija: landing sa grupama i sekundarna navigacija ------------- */
+.admin-groups {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
+  align-items: start;
+  margin-top: 6px;
+}
+.admin-group-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+  padding: 14px 16px 10px;
+  min-width: 0;
+}
+.admin-group-card h2 { margin: 0; font-size: 15px; }
+.admin-group-card > p { margin: 4px 0 10px; }
+.admin-module-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.admin-module-link {
+  display: flex; flex-direction: column; gap: 2px;
+  padding: 8px 10px; margin: 0 -10px;
+  border-radius: var(--radius-sm);
+  color: inherit; text-decoration: none;
+}
+.admin-module-link strong { font-size: 13.5px; color: var(--primary); }
+.admin-module-link span { font-size: 12px; color: var(--text-secondary); }
+.admin-module-link:hover, .admin-module-link:focus-visible { background: var(--surface-muted); }
+.admin-module-link:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
+.admin-breadcrumb { font-size: 12.5px; color: var(--text-secondary); margin: 0 0 8px; }
+.admin-breadcrumb a { color: var(--primary); }
+/* Najviše 4 modula po grupi: prelamanje u novi red umesto vodoravnog klizanja. */
+.admin-subnav { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 12px; }
+.admin-subnav .btn { text-decoration: none; }

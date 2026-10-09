@@ -1,4 +1,5 @@
-import type { UiProfile } from '../features/auth/profile';
+import { ADMIN_ENTRY_PERMISSIONS } from '../features/admin/adminNavigation';
+import { isVisibleForProfile, type UiProfile } from '../features/auth/profile';
 
 /**
  * Navigacija aplikacije (izdvojeno iz Layout-a radi testiranja).
@@ -31,6 +32,8 @@ export interface NavItem {
   label: string;
   end?: boolean;
   permission?: string;
+  /** Vidljivo ako korisnik ima BAR JEDNO od ovih prava (pored `permission`, ako je zadat). */
+  anyPermission?: readonly string[];
   icon: IconName;
   /** Podrute koje i dalje pripadaju ovoj stavci (npr. /unos/pregled -> Unos). */
   alsoActiveOn?: string[];
@@ -131,9 +134,10 @@ export const NAV_GROUPS: NavGroup[] = [
     title: 'Administracija',
     items: [
       {
-        // Centri, pravila osnovnih naknada, korisnici i ostala podešavanja.
+        // Landing sa grupama: vidljiv uz pravo na bar jedan administrativni modul
+        // (isto pravilo kao AdminEntryGate na ruti). Sekcije traže centers.manage.
         to: '/administracija', label: 'Administracija', end: true,
-        permission: 'centers.manage', icon: 'settings', profiles: ['admin'],
+        anyPermission: ADMIN_ENTRY_PERMISSIONS, icon: 'settings', profiles: ['admin'],
       },
       {
         // Kreiranje/poziv, uloge, centri, (de)aktivacija — 0076 + Edge Function.
@@ -155,3 +159,17 @@ export const NAV_GROUPS: NavGroup[] = [
     ],
   },
 ];
+
+/**
+ * Jedno pravilo vidljivosti stavke (koristi ga Layout): profil + `permission`
+ * (ako je zadat) + bar jedno iz `anyPermission` (ako je zadat).
+ */
+export function navItemVisible(
+  item: Pick<NavItem, 'permission' | 'anyPermission' | 'profiles'>,
+  profile: Parameters<typeof isVisibleForProfile>[0],
+  can: (permission: string) => boolean,
+): boolean {
+  return isVisibleForProfile(profile, item.profiles)
+    && (!item.permission || can(item.permission))
+    && (!item.anyPermission || item.anyPermission.some((p) => can(p)));
+}

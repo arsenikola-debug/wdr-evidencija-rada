@@ -103,10 +103,13 @@ describe('opšte: druge liste izbora', () => {
   it('prevoznici, odgovorne osobe, korisnici, zaposleni, vrste i kontrole su sortirani po nazivu', () => {
     const read = (p: string) => readFileSync(join(__dirname, '..', 'src', p), 'utf8');
     const admin = read('routes/Admin.tsx');
-    for (const k of ['cfg.transport_providers', 'cfg.responsible_persons', 'cfg.users', 'cfg.payment_types',
+    for (const k of ['cfg.transport_providers', 'cfg.responsible_persons', 'cfg.payment_types',
       'cfg.payment_behaviors', 'cfg.attendance_behaviors', 'cfg.control_rules']) {
       expect(admin, k).toMatch(new RegExp(`sortByLabel\\(${k.replace('.', '\\.')}`));
     }
+    // Korisnici: pregled u Administraciji je zamenjen modulom Administracija → Korisnici
+    // (grupa „Korisnici i zaposleni"); isto pravilo, abecedno po imenu, važi tamo.
+    expect(read('features/admin/users.ts')).toContain('sortByLabel(users, (u) => u.full_name || u.email)');
     expect(read('routes/MyAdjustments.tsx')).toContain('sortByLabel(reference?.employees');
     expect(read('routes/AdminPayouts.tsx')).toContain('sortByLabel(ctx.types');
     expect(read('components/NewEmployeeForm.tsx')).toContain('sortByLabel(providers');

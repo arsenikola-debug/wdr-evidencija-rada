@@ -494,7 +494,8 @@ describe('bezbednosne granice u izvoru (frontend)', () => {
     expect(admin).not.toContain('newAuthUserId');
     expect(admin).not.toContain('UUID iz Supabase Auth');
     expect(admin).not.toContain('adminLinkUser');
-    expect(admin).toContain('/administracija/korisnici');
+    // Putokaz ka modulu je sada u navigaciji Administracije (grupa „Korisnici i zaposleni").
+    expect(read('features/admin/adminNavigation.ts')).toContain("to: '/administracija/korisnici'");
   });
 
   it('nema email toka: bez invite/recovery/SMTP poziva i bez obrade email linkova', () => {
@@ -555,9 +556,10 @@ describe('bezbednosne granice u izvoru (frontend)', () => {
     expect(screen).toContain('sortCenters(list.centers)');
   });
 
-  it('pregled korisnika u Administraciji (16bbf2c) je sačuvan i abecedan', () => {
+  it('stari putokaz „Korisnici i uloge" je zamenjen modulom Korisnici; lista korisnika ostaje abecedna', () => {
     const admin = read('routes/Admin.tsx');
-    expect(admin).toContain('sortByLabel(cfg.users, (u) => u.full_name || u.email)');
+    expect(admin).not.toContain('Korisnici i uloge');
+    expect(read('features/admin/users.ts')).toContain('sortByLabel(users, (u) => u.full_name || u.email)');
   });
 
   it('ekran ne zadaje lozinku drugom korisniku', () => {

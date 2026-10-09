@@ -1,7 +1,16 @@
 import { centerLabel, sortByLabel, sortCenters } from '../lib/format/sort';
 import { formatDate, formatDateTime } from '../lib/format/date';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useCallback, useEffect, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { AdminLanding, AdminSectionNav } from '../components/AdminNavigation';
+import {
+  ADMIN_PAGE_PATH,
+  ADMIN_PAGE_PERMISSION,
+  type AdminSectionKey,
+  groupOfSection,
+  parseSectionParam,
+  visibleAdminGroups,
+} from '../features/admin/adminNavigation';
 import { Banner, EmptyState, Spinner } from '../components/Bits';
 import { messageForCode } from '../features/grid/errors';
 import { formatRsd } from '../features/grid/model';
@@ -21,24 +30,8 @@ import { useAuth } from '../lib/auth/AuthProvider';
  * menja izgled, a ne rute ni poslovnu logiku. Svako dugme prati `config.can.*`
  * sa servera; baza svejedno ponovo proverava svaku izmenu.
  */
-type Tab =
-  | 'centri' | 'smene' | 'statusi' | 'isplate' | 'naknade'
-  | 'prevoznici' | 'prevoz' | 'stopovi' | 'kalendar' | 'korisnici' | 'kontrole' | 'spremnost';
-
-const TABS: Array<{ key: Tab; label: string }> = [
-  { key: 'centri', label: 'Centri' },
-  { key: 'smene', label: 'Smene' },
-  { key: 'statusi', label: 'Statusi evidencije' },
-  { key: 'isplate', label: 'Vrste isplata' },
-  { key: 'naknade', label: 'Pravila naknada' },
-  { key: 'prevoznici', label: 'Prevoznici i odgovorna lica' },
-  { key: 'prevoz', label: 'Pravila prevoza' },
-  { key: 'stopovi', label: 'Cene po stopu' },
-  { key: 'kalendar', label: 'Radni kalendar' },
-  { key: 'korisnici', label: 'Korisnici i uloge' },
-  { key: 'kontrole', label: 'Kontrolna pravila' },
-  { key: 'spremnost', label: 'Spremnost sistema' },
-];
+/** Sekcija stranice; bira se iz URL-a (`?modul=`), landing kada je nema. */
+type Tab = AdminSectionKey;
 
 const WEEKDAYS = ['Pon', 'Uto', 'Sre', 'Čet', 'Pet', 'Sub', 'Ned'];
 
@@ -61,10 +54,13 @@ interface StopRatesView {
 }
 
 export function Admin() {
-  const { api } = useAuth();
-  const [tab, setTab] = useState<Tab>('centri');
-  /** Aktivan tab mora ostati vidljiv i kada traka klizi vodoravno. */
-  const activeTabRef = useRef<HTMLButtonElement>(null);
+  const { api, can } = useAuth();
+  const [params] = useSearchParams();
+  // null = landing sa grupama; inače sekcija iz `?modul=` (deep link).
+  const tab: Tab | null = parseSectionParam(params.get('modul'));
+  // Sekcije (Centri, Smene, …) i dalje traže centers.manage, kao i ranije cela
+  // stranica. Landing ne učitava konfiguraciju — dovoljan je bar jedan modul.
+  const sectionAllowed = tab !== null && can(ADMIN_PAGE_PERMISSION);
   const [cfg, setCfg] = useState<AdminConfig | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
@@ -86,16 +82,19 @@ export function Admin() {
     }
   }, [api]);
 
+  // Promena sekcije (link ili nazad u pregledaču) briše poruku i nedovršen unos — kao ranije klik na tab.
   useEffect(() => {
-    activeTabRef.current?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    setNotice(null);
+    setDraft({});
   }, [tab]);
 
   useEffect(() => {
+    if (!sectionAllowed) return;
     void load();
-  }, [load]);
+  }, [load, sectionAllowed]);
 
   useEffect(() => {
-    if (tab !== 'spremnost') return;
+    if (tab !== 'spremnost' || !sectionAllowed) return;
     void (async () => {
       try {
         setReadiness(await api.adminReadiness());
@@ -107,7 +106,7 @@ export function Admin() {
         });
       }
     })();
-  }, [api, tab, busy]);
+  }, [api, tab, busy, sectionAllowed]);
 
   function set(key: string, value: string) {
     setDraft((d) => ({ ...d, [key]: value }));
@@ -132,40 +131,49 @@ export function Admin() {
     }
   }
 
+  if (tab === null) {
+    return (
+      <div className="page">
+        <div className="preview-head">
+          <div>
+            <h1>Administracija</h1>
+            <p className="muted">
+              Poslovni podaci se menjaju bez izmene koda. Ponašanje obračuna se bira iz
+              podržanog skupa — nova aritmetika je softverska izmena, ne konfiguracija.
+            </p>
+          </div>
+        </div>
+        {/* Samo grupe/moduli koje korisnik sme da otvori (AdminEntryGate garantuje bar jedan). */}
+        <AdminLanding groups={visibleAdminGroups(can)} />
+      </div>
+    );
+  }
+
+  if (!sectionAllowed) {
+    // Npr. korisnik sa users.manage bez centers.manage otvori deep link ?modul=centri.
+    return (
+      <div className="page">
+        <nav className="admin-breadcrumb" aria-label="Putanja">
+          <Link to={ADMIN_PAGE_PATH}>Administracija</Link>
+        </nav>
+        <EmptyState
+          title="Nemate pravo pristupa ovoj sekciji."
+          hint={`Potrebna permisija: ${ADMIN_PAGE_PERMISSION}. Obratite se administratoru.`}
+        />
+      </div>
+    );
+  }
+
   if (error) return <Banner kind="error">{error}</Banner>;
   if (!cfg) return <Spinner label="Čitanje konfiguracije…" />;
 
   return (
     <div className="page">
-      <div className="preview-head">
-        <div>
-          <h1>Administracija</h1>
-          <p className="muted">
-            Poslovni podaci se menjaju bez izmene koda. Ponašanje obračuna se bira iz
-            podržanog skupa — nova aritmetika je softverska izmena, ne konfiguracija.
-          </p>
-        </div>
-      </div>
-
-      {/*
-        12+ tabova se ne prelama u više redova — traka klizi vodoravno, a aktivan
-        tab se sam dovlači u vidno polje posle osvežavanja ekrana.
-      */}
-      <div className="filter-row tabs" role="tablist" aria-label="Sekcije administracije">
-        {TABS.map((t) => (
-          <button
-            key={t.key}
-            type="button"
-            role="tab"
-            aria-selected={t.key === tab}
-            ref={t.key === tab ? activeTabRef : undefined}
-            className={t.key === tab ? 'btn btn-primary' : 'btn btn-quiet'}
-            onClick={() => { setTab(t.key); setNotice(null); setDraft({}); }}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      {/* Grupa filtrirana pravima: npr. „Tarife dodatnih isplata" samo uz payout.cutover.manage. */}
+      <AdminSectionNav
+        group={visibleAdminGroups(can).find((g) => g.key === groupOfSection(tab).key)!}
+        active={tab}
+      />
 
       {notice && <Banner kind={notice.kind}>{notice.text}</Banner>}
 
@@ -1331,59 +1339,6 @@ export function Admin() {
               </p>
             </>
           )}
-        </section>
-      )}
-
-      {/* ====================================================== KORISNICI == */}
-      {tab === 'korisnici' && (
-        <section className="control-section">
-          <h2>Korisnici i uloge</h2>
-          <Banner kind="warning">
-            Osetljive permisije: {cfg.sensitive_permissions.join(', ')}. Dodela bilo koje od
-            njih menja ko sme da odobrava novac ili da zaobiđe kontrole.
-          </Banner>
-          {cfg.users.length === 0 ? (
-            <EmptyState
-              title="Lista korisnika nije dostupna"
-              hint="Potrebna je permisija users.manage."
-            />
-          ) : (
-            <table className="list list-compact">
-              <thead>
-                <tr><th>Ime</th><th>Aktivan</th><th>Uloge</th><th>Centri</th>
-                  <th>Izuzeci permisija</th></tr>
-              </thead>
-              <tbody>
-                {sortByLabel(cfg.users, (u) => u.full_name || u.email).map((u) => (
-                  <tr key={u.profile_id} className={u.active ? '' : 'row-muted'}>
-                    <td>{u.full_name}<div className="muted small">{u.email}</div></td>
-                    <td>{u.active ? 'da' : 'ne'}</td>
-                    <td>{u.roles.join(', ')}</td>
-                    <td>
-                      {u.centers.map((c) =>
-                        `${c.center_code}${c.can_write ? ' (upis)' : ''}`).join(', ') || '—'}
-                    </td>
-                    <td>
-                      {u.permission_overrides.length === 0
-                        ? '—'
-                        : u.permission_overrides.map((o) =>
-                            `${o.mode === 'GRANT' ? '+' : '−'}${o.permission_code}`).join(', ')}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-
-          {/*
-            0076: kreiranje, poziv, izmena pristupa i (de)aktivacija su na ekranu
-            Administracija → Korisnici. Ovde ostaje samo pregled (abecedno, 16bbf2c).
-          */}
-          <Banner kind="info">
-            Korisnici se kreiraju, pozivaju, menjaju i deaktiviraju na ekranu{' '}
-            <Link to="/administracija/korisnici">Administracija → Korisnici</Link>. Ručno
-            kreiranje naloga u Supabase dashboardu više nije potrebno.
-          </Banner>
         </section>
       )}
     </div>

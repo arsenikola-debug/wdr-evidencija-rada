@@ -2,6 +2,7 @@ import { formatPeriod } from '../lib/format/date';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Banner, EmptyState, Spinner, StatusBadge } from '../components/Bits';
+import { adminSectionHref } from '../features/admin/adminNavigation';
 import { messageForCode } from '../features/grid/errors';
 import { formatRsd } from '../features/grid/model';
 import { defaultRange } from '../features/analytics/model';
@@ -610,7 +611,12 @@ function FinanceHome() {
 // --------------------------------------------------------------------- ADMIN --
 
 function AdminHome() {
-  const { api, session } = useAuth();
+  const { api, session, can } = useAuth();
+  /**
+   * Linkovi ka nalozima: ranije su vodili na /administracija (podrazumevani tab
+   * „Centri"); sada direktno na modul Korisnici, a bez users.manage na Centre — kao pre.
+   */
+  const usersHref = can('users.manage') ? '/administracija/korisnici' : adminSectionHref('centri');
   const [cfg, setCfg] = useState<AdminConfig | null>(null);
   const [readiness, setReadiness] = useState<AdminReadiness | null>(null);
   const [readinessFailed, setReadinessFailed] = useState(false);
@@ -660,19 +666,19 @@ function AdminHome() {
     ? [
         ...readiness.configuration.centers_without_expected_pattern.map((c) => ({
           text: `Centar ${c} nema definisan radni kalendar (očekivane dane).`,
-          to: '/administracija',
+          to: adminSectionHref('kalendar'),
         })),
         ...readiness.compensation.primary_types_without_rule.map((t) => ({
           text: `Vrsta isplate ${t} nema pravilo naknade — stavke ostaju bez iznosa.`,
-          to: '/administracija',
+          to: adminSectionHref('naknade'),
         })),
         ...readiness.compensation.component_types_without_rule.map((t) => ({
           text: `Komponenta ${t} nema pravilo naknade.`,
-          to: '/administracija',
+          to: adminSectionHref('naknade'),
         })),
         ...readiness.transport.providers_without_rule.map((p) => ({
           text: `Prevoznik ${p} nema pravilo prevoza.`,
-          to: '/administracija',
+          to: adminSectionHref('prevoz'),
         })),
       ]
     : [];
@@ -699,22 +705,22 @@ function AdminHome() {
               label="Aktivni korisnici"
               value={activeUsers.length}
               hint={`od ukupno ${users.length}`}
-              to="/administracija"
+              to={usersHref}
             />
-            <Kpi label="Aktivni centri" value={activeCenters.length} to="/administracija" />
+            <Kpi label="Aktivni centri" value={activeCenters.length} to={adminSectionHref('centri')} />
             <Kpi
               label="Nalozi bez uloge"
               value={withoutRole.length}
               tone={withoutRole.length > 0 ? 'bad' : 'ok'}
               hint={withoutRole.length > 0 ? 'ne mogu da rade' : 'svi imaju ulogu'}
-              to="/administracija"
+              to={usersHref}
             />
             <Kpi
               label="Nalozi bez centra"
               value={withoutCenter.length}
               tone={withoutCenter.length > 0 ? 'warn' : 'ok'}
               hint="bez administratorskih uloga"
-              to="/administracija"
+              to={usersHref}
             />
             <Kpi
               label="Aktivni zaposleni"
@@ -739,7 +745,7 @@ function AdminHome() {
                       <strong>{u.full_name}</strong>
                       <span className="muted small">{u.email ?? 'bez e-adrese'} · nema dodeljenu ulogu</span>
                     </div>
-                    <Link className="btn" to="/administracija">
+                    <Link className="btn" to={usersHref}>
                       Dodeli ulogu
                     </Link>
                   </li>
@@ -754,7 +760,7 @@ function AdminHome() {
                           {u.roles.join(', ')} · nema dodeljen nijedan centar
                         </span>
                       </div>
-                      <Link className="btn" to="/administracija">
+                      <Link className="btn" to={usersHref}>
                         Dodeli centar
                       </Link>
                     </li>
@@ -768,7 +774,7 @@ function AdminHome() {
             {readinessFailed ? (
               <p className="muted small">
                 Provera spremnosti sistema trenutno nije dostupna, pa se propusti ne
-                prikazuju. Otvorite Administracija → Spremnost sistema.
+                prikazuju. Otvorite Administracija → Sistem → Spremnost sistema.
               </p>
             ) : !readiness ? (
               <Spinner label="Provera spremnosti…" />
