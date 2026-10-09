@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
@@ -23,6 +24,11 @@ interface AuthValue {
   /** Permission check mirrors app.has_perm(); the database still enforces it. */
   can(permission: string): boolean;
   writableCenters(): SessionProfile['centers'];
+  /**
+   * Lozinka upravo unesena na prijavi — SAMO u memoriji (ref), samo dok traje
+   * obavezna promena privremene lozinke, i čita se jednom. Nikad u storage/URL.
+   */
+  takeLoginPassword(): string | null;
 }
 
 const AuthContext = createContext<AuthValue | null>(null);
@@ -32,6 +38,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<SessionProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const loginPassword = useRef<string | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -49,6 +56,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     void refresh();
   }, [refresh]);
 
+  // Privremena lozinka se drži samo dok je promena obavezna.
+  useEffect(() => {
+    if (!session || !session.must_change_password) loginPassword.current = null;
+  }, [session]);
+
   const value = useMemo<AuthValue>(
     () => ({
       api,
@@ -60,11 +72,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signIn: async (email, password) => {
         setError(null);
         await api.signIn(email, password);
+        loginPassword.current = password;
         await refresh();
       },
       signOut: async () => {
+        loginPassword.current = null;
         await api.signOut();
         setSession(null);
+      },
+      takeLoginPassword: () => {
+        const p = loginPassword.current;
+        loginPassword.current = null;
+        return p;
       },
       can: (permission) => Boolean(session?.permissions.includes(permission)),
       writableCenters: () => (session?.centers ?? []).filter((c) => c.can_write),

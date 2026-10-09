@@ -43,6 +43,14 @@ import type {
   NewEmployeeInput,
   AdminCenter,
   AdminConfig,
+  AdminAuthStatus,
+  AdminCreateUserInput,
+  AdminCreateUserResult,
+  AdminResetPasswordResult,
+  AdminUpdateUserAccessInput,
+  AdminUpdateUserAccessResult,
+  AdminUserAuditEvent,
+  AdminUserList,
   AdminPaymentType,
   AdminShiftTemplate,
   Adjustment,
@@ -302,6 +310,35 @@ export interface WdrApi {
       permission_code: string; mode: string; reason?: string | null;
     }> | null;
   }): Promise<unknown>;
+
+  // --- Admin → Korisnici (0076 + Edge Function wdr-admin-users) ------------
+  /** Lista + katalog uloga/permisija/centara. Direktno kroz PostgREST (users.manage). */
+  adminListUsers(): Promise<AdminUserList>;
+  /** Stanje Auth naloga (poziv prihvaćen, poslednja prijava). Edge Function. */
+  adminUsersAuthStatus(): Promise<AdminAuthStatus[]>;
+  /** Kreira Auth nalog (bez emaila) + profil + pristup; vraća privremenu lozinku jednom. Edge Function. */
+  adminCreateUser(input: AdminCreateUserInput): Promise<AdminCreateUserResult>;
+  /** Uloge / centri / izuzeci sa diff auditom. Direktno kroz PostgREST. */
+  adminUpdateUserAccess(input: AdminUpdateUserAccessInput): Promise<AdminUpdateUserAccessResult>;
+  /**
+   * Baza (odmah) pa Auth ban, kroz Edge Function. Ako funkcija nije dostupna,
+   * deaktivacija se ipak izvršava u bazi (to je stvarna kontrola pristupa), a
+   * `auth_ban: 'skipped'` kaže da prijava u Auth-u nije blokirana.
+   */
+  adminDeactivateUser(profileId: Uuid, reason?: string | null):
+    Promise<{ profile_id: Uuid; active: false; changed: boolean; auth_ban: 'ok' | 'failed' | 'skipped' }>;
+  /** Auth unban pa baza (Edge Function); bez funkcije samo baza (`auth_unban: 'skipped'`). */
+  adminReactivateUser(profileId: Uuid, reason?: string | null):
+    Promise<{ profile_id: Uuid; active: true; changed: boolean; auth_unban: 'ok' | 'skipped' }>;
+  /** Nova privremena lozinka (stara prestaje da važi, sesije se gase). Edge Function. */
+  adminResetPassword(profileId: Uuid, reason?: string | null): Promise<AdminResetPasswordResult>;
+  /**
+   * Korisnik postavlja SVOJU lozinku (prvi login ili kasnije): Edge Function
+   * proverava trenutnu lozinku, postavlja novu i briše must_change_password.
+   * Sve sesije se gase → posle uspeha sledi nova prijava.
+   */
+  changePassword(currentPassword: string, newPassword: string): Promise<void>;
+  adminUserAudit(profileId: Uuid): Promise<AdminUserAuditEvent[]>;
 
   adminSetUserAccess(input: {
     profile_id: Uuid; active: boolean; role_codes?: string[] | null;

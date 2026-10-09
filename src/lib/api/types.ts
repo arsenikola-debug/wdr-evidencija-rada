@@ -452,6 +452,11 @@ export interface SessionProfile {
   roles: string[];
   permissions: string[];
   centers: CenterAccess[];
+  /**
+   * 0076: privremena lozinka nije promenjena. Baza tada korisniku ne daje
+   * ništa (app.profile_id() = NULL); frontend ga vodi samo na /postavi-lozinku.
+   */
+  must_change_password?: boolean;
 }
 
 export interface SubmissionListItem {
@@ -2127,4 +2132,145 @@ export interface BulkAssignResult {
   assigned: number;
   failed: number;
   results: Array<{ employee_id: Uuid; full_name: string | null; ok: boolean; message?: string }>;
+}
+
+// =============================================================================
+// Admin → Korisnici (0076 + Edge Function `wdr-admin-users`)
+// =============================================================================
+
+export interface AdminUserRole { code: string; name: string }
+
+export interface AdminUserCenter {
+  center_id: Uuid;
+  center_code: string;
+  center_name: string;
+  center_active: boolean;
+  can_write: boolean;
+}
+
+export interface AdminUserOverride {
+  permission_code: string;
+  mode: 'GRANT' | 'REVOKE';
+  reason: string | null;
+}
+
+export interface AdminUserRow {
+  profile_id: Uuid;
+  auth_user_id: Uuid;
+  full_name: string;
+  email: string;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+  roles: AdminUserRole[];
+  centers: AdminUserCenter[];
+  /** Prazno kada pozivalac nema roles.manage (server ih tada ne šalje). */
+  permission_overrides: AdminUserOverride[];
+  /** `centers.manage` — globalni pristup svim centrima (administrator). */
+  all_centers: boolean;
+  /** Privremena lozinka nije zamenjena (nov nalog ili admin reset). */
+  must_change_password: boolean;
+  /** Kada je korisnik SAM poslednji put postavio lozinku. Lozinka se nikad ne vraća. */
+  password_changed_at: string | null;
+  last_password_reset_at: string | null;
+  created_by_name: string | null;
+}
+
+export interface AdminRoleCatalogItem {
+  code: string;
+  name: string;
+  description: string | null;
+  is_system: boolean;
+  permissions: string[];
+}
+
+export interface AdminUserList {
+  me: Uuid;
+  can: { users: boolean; roles: boolean };
+  active_admin_count: number;
+  roles: AdminRoleCatalogItem[];
+  permissions: Array<{ code: string; name: string; area: string }>;
+  centers: Array<{ id: Uuid; code: string; name: string; active: boolean }>;
+  sensitive_permissions: string[];
+  users: AdminUserRow[];
+}
+
+/** Stanje Supabase Auth naloga (Edge Function `auth_status`). */
+/** UNCONFIRMED = stari nalog sa nepotvrđenim emailom (novi tok uvek potvrđuje). */
+export type AuthAccountState = 'MISSING' | 'BANNED' | 'UNCONFIRMED' | 'ACTIVE';
+
+export interface AdminAuthStatus {
+  auth_user_id: Uuid;
+  state: AuthAccountState;
+  email_confirmed_at: string | null;
+  last_sign_in_at: string | null;
+  banned_until: string | null;
+}
+
+export interface AdminCenterAccessInput { center_code: string; can_write: boolean }
+
+export interface AdminOverrideInput {
+  permission_code: string;
+  mode: 'GRANT' | 'REVOKE';
+  reason: string | null;
+}
+
+export interface AdminCreateUserInput {
+  first_name: string;
+  last_name: string;
+  email: string;
+  role_codes: string[];
+  center_access: AdminCenterAccessInput[];
+  permission_overrides?: AdminOverrideInput[] | null;
+  /** Izričita potvrda: povezati postojeći Auth nalog bez WDR profila. */
+  link_existing_auth?: boolean;
+}
+
+/**
+ * Privremena lozinka postoji SAMO u ovom odgovoru (i u memoriji dijaloga koji je
+ * prikazuje). Ne čuva se u stanju aplikacije, storage-u, URL-u ni logu.
+ */
+export interface TemporaryCredentials {
+  email: string;
+  full_name: string;
+  temporary_password: string;
+}
+
+export interface AdminResetPasswordResult extends TemporaryCredentials {
+  profile_id: Uuid;
+  must_change_password: true;
+}
+
+export interface AdminCreateUserResult {
+  profile_id: Uuid;
+  auth_user_id: Uuid;
+  email: string;
+  full_name: string;
+  auth_user_reused: boolean;
+  must_change_password: true;
+  temporary_password: string;
+}
+
+export interface AdminUpdateUserAccessInput {
+  profile_id: Uuid;
+  /** null = ne menjaj; niz = PUN nameravani skup. */
+  role_codes: string[] | null;
+  center_access: AdminCenterAccessInput[] | null;
+  permission_overrides: AdminOverrideInput[] | null;
+  reason?: string | null;
+}
+
+export interface AdminUpdateUserAccessResult {
+  profile_id: Uuid;
+  changed: Array<'roles' | 'centers' | 'overrides'>;
+}
+
+export interface AdminUserAuditEvent {
+  id: number;
+  action: string;
+  entity_type: string;
+  occurred_at: string;
+  actor_id: Uuid | null;
+  actor_name: string | null;
+  changes: unknown;
 }

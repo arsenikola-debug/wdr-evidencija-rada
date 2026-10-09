@@ -12,6 +12,7 @@ export function Login() {
   const [password, setPassword] = useState(apiKind === 'mock' ? 'mock1234' : '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const notice = (location.state as { notice?: string } | null)?.notice ?? null;
 
   if (!loading && session) {
     const from = (location.state as { from?: string } | null)?.from ?? '/unos';
@@ -38,6 +39,7 @@ export function Login() {
         <h1>WDR</h1>
         <p className="login-sub">Dnevna evidencija rada</p>
 
+        {notice && !error && <Banner kind="success">{notice}</Banner>}
         {(error || authError) && <Banner kind="error">{error || authError}</Banner>}
 
         <label>
@@ -64,6 +66,11 @@ export function Login() {
         <button type="submit" className="btn btn-primary btn-block" disabled={busy}>
           {busy ? 'Prijava…' : 'Prijavi se'}
         </button>
+
+        {/* Nema SMTP-a ni email oporavka: ne obećava se reset koji neće stići. */}
+        <p className="login-hint">
+          Zaboravili ste lozinku? Za reset lozinke obratite se administratoru WDR sistema.
+        </p>
 
         {apiKind === 'mock' && (
           <p className="login-hint">Mock režim: bilo koja e-adresa sa @ i šifra od 4+ znaka.</p>

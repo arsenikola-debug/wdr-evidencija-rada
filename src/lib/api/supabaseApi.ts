@@ -3,6 +3,7 @@ import type { OvertimeComponentInput, OvertimeComponentResult } from './types';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { effectivePermissions, roleCodes } from '../../features/auth/permissions';
 import { WdrApiError, type WdrApi } from './WdrApi';
+import { ADMIN_USERS_FUNCTION, edgeErrorToWdr } from './edgeFunction';
 import type {
   AdminAttendanceStatus,
   AdminPayoutReport,
@@ -47,6 +48,14 @@ import type {
   NewEmployeeInput,
   AdminCenter,
   AdminConfig,
+  AdminAuthStatus,
+  AdminCreateUserInput,
+  AdminCreateUserResult,
+  AdminResetPasswordResult,
+  AdminUpdateUserAccessInput,
+  AdminUpdateUserAccessResult,
+  AdminUserAuditEvent,
+  AdminUserList,
   AdminPaymentType,
   AdminShiftTemplate,
   Adjustment,
@@ -148,7 +157,9 @@ export class SupabaseWdrApi implements WdrApi {
 
     const profileRes = await this.rest
       .from('profiles')
-      .select('id, full_name, email')
+      // '*' namerno: kolona must_change_password postoji tek posle 0076, pa bi
+      // eksplicitan spisak oborio prijavu SVIH ako bi frontend stigao pre baze.
+      .select('*')
       .eq('auth_user_id', sess.session.user.id)
       .maybeSingle();
 
@@ -167,7 +178,18 @@ export class SupabaseWdrApi implements WdrApi {
       );
     }
 
+    // Deaktiviran nalog: baza mu ionako ne daje ništa (app.profile_id() = NULL),
+    // ali korisnik mora da vidi ZAŠTO, a ne prazne ekrane.
+    if (profileRes.data.active === false) {
+      await this.rest.auth.signOut();
+      throw new WdrApiError(
+        'Nalog je deaktiviran. Obratite se administratoru.',
+        'PROFILE_INACTIVE',
+      );
+    }
+
     const profileId = profileRes.data.id;
+    const mustChangePassword = (profileRes.data as { must_change_password?: boolean }).must_change_password === true;
 
     const [rolesRes, permsRes, overridesRes, centersRes] =
       await Promise.all([
@@ -257,6 +279,8 @@ export class SupabaseWdrApi implements WdrApi {
         overrides,
       ),
       centers,
+      // Dok je true, baza ionako vraća prazna prava; ruta vodi na /postavi-lozinku.
+      must_change_password: mustChangePassword,
     };
   }
 
@@ -866,6 +890,88 @@ export class SupabaseWdrApi implements WdrApi {
     });
   }
 
+  // --- Admin → Korisnici ----------------------------------------------------
+
+  async adminListUsers(): Promise<AdminUserList> {
+    return this.rpc<AdminUserList>('rpc_admin_list_users', {});
+  }
+
+  async adminUsersAuthStatus(): Promise<AdminAuthStatus[]> {
+    const r = await this.edge<{ statuses: AdminAuthStatus[] }>({ action: 'auth_status' });
+    return r.statuses;
+  }
+
+  async adminCreateUser(i: AdminCreateUserInput): Promise<AdminCreateUserResult> {
+    return this.edge<AdminCreateUserResult>({
+      action: 'create',
+      first_name: i.first_name,
+      last_name: i.last_name,
+      email: i.email,
+      role_codes: i.role_codes,
+      center_access: i.center_access,
+      permission_overrides: i.permission_overrides ?? null,
+      link_existing_auth: i.link_existing_auth === true,
+    });
+  }
+
+  async adminUpdateUserAccess(i: AdminUpdateUserAccessInput): Promise<AdminUpdateUserAccessResult> {
+    return this.rpc<AdminUpdateUserAccessResult>('rpc_admin_update_user_access', {
+      p_profile_id: i.profile_id,
+      p_role_codes: i.role_codes,
+      p_center_access: i.center_access,
+      p_permission_overrides: i.permission_overrides,
+      p_reason: i.reason ?? null,
+    });
+  }
+
+  async adminDeactivateUser(profileId: Uuid, reason?: string | null) {
+    try {
+      return await this.edge<{ profile_id: Uuid; active: false; changed: boolean; auth_ban: 'ok' | 'failed' }>(
+        { action: 'deactivate', profile_id: profileId, reason: reason ?? null });
+    } catch (err) {
+      if (!(err instanceof WdrApiError) || err.code !== 'ADMIN_USERS_FN_UNAVAILABLE') throw err;
+      // Bez server funkcije: pristup se gasi u bazi (users.manage proverava baza).
+      const r = await this.rpc<{ profile_id: Uuid; changed: boolean }>('rpc_admin_set_user_active', {
+        p_profile_id: profileId, p_active: false, p_reason: reason ?? null,
+      });
+      return { profile_id: r.profile_id, active: false as const, changed: r.changed, auth_ban: 'skipped' as const };
+    }
+  }
+
+  async adminReactivateUser(profileId: Uuid, reason?: string | null) {
+    try {
+      const r = await this.edge<{ profile_id: Uuid; active: true; changed: boolean }>(
+        { action: 'reactivate', profile_id: profileId, reason: reason ?? null });
+      return { ...r, auth_unban: 'ok' as const };
+    } catch (err) {
+      if (!(err instanceof WdrApiError) || err.code !== 'ADMIN_USERS_FN_UNAVAILABLE') throw err;
+      const r = await this.rpc<{ profile_id: Uuid; changed: boolean }>('rpc_admin_set_user_active', {
+        p_profile_id: profileId, p_active: true, p_reason: reason ?? null,
+      });
+      return { profile_id: r.profile_id, active: true as const, changed: r.changed, auth_unban: 'skipped' as const };
+    }
+  }
+
+  async adminResetPassword(profileId: Uuid, reason?: string | null): Promise<AdminResetPasswordResult> {
+    return this.edge<AdminResetPasswordResult>(
+      { action: 'reset_password', profile_id: profileId, reason: reason ?? null });
+  }
+
+  async changePassword(currentPassword: string, newPassword: string): Promise<void> {
+    // Lozinke idu SAMO u telo POST zahteva ka Edge Function-u (HTTPS), nikad u URL.
+    await this.edge<{ changed: true }>({
+      action: 'change_own_password', current_password: currentPassword, new_password: newPassword,
+    });
+    // Server je ugasio sve sesije; lokalno se samo čisti sačuvana sesija.
+    await this.rest.auth.signOut({ scope: 'local' });
+  }
+
+  async adminUserAudit(profileId: Uuid): Promise<AdminUserAuditEvent[]> {
+    return this.rpc<AdminUserAuditEvent[]>('rpc_admin_user_audit', {
+      p_profile_id: profileId, p_limit: 100,
+    });
+  }
+
   async adminSetUserAccess(i: {
     profile_id: Uuid; active: boolean; role_codes?: string[] | null;
     center_access?: Array<{ center_code: string; can_write: boolean }> | null;
@@ -1354,6 +1460,16 @@ export class SupabaseWdrApi implements WdrApi {
   }
 
   // --- plumbing ------------------------------------------------------------
+
+  /**
+   * Poziv Edge Function-a `wdr-admin-users` sa KORISNIKOVIM JWT-om.
+   * supabase-js sam dodaje Authorization; ovde nema nikakvog ključa.
+   */
+  private async edge<T>(body: Record<string, unknown>): Promise<T> {
+    const { data, error } = await this.rest.functions.invoke(ADMIN_USERS_FUNCTION, { body });
+    if (error) throw await edgeErrorToWdr(error);
+    return data as T;
+  }
 
   private async rpc<T>(fn: string, args: Record<string, unknown>): Promise<T> {
     const { data, error } = await this.db.rpc(fn, args);

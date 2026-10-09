@@ -136,6 +136,11 @@ export const NAV_GROUPS: NavGroup[] = [
         permission: 'centers.manage', icon: 'settings', profiles: ['admin'],
       },
       {
+        // Kreiranje/poziv, uloge, centri, (de)aktivacija — 0076 + Edge Function.
+        to: '/administracija/korisnici', label: 'Korisnici',
+        permission: 'users.manage', icon: 'users', profiles: ['admin'],
+      },
+      {
         to: '/zaposleni', label: 'Zaposleni',
         permission: 'employee.view', icon: 'users', profiles: ['admin'],
       },

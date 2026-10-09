@@ -1,3 +1,5 @@
+import { newPasswordProblem } from '../../features/auth/passwordPolicy';
+import { MockUserDirectory } from './mockUsers';
 import type { OvertimeComponentInput, OvertimeComponentResult } from './types';
 import { WdrApiError, type WdrApi } from './WdrApi';
 import { decidePeriodReuse } from '../../features/periods/reuse';
@@ -51,6 +53,14 @@ import type {
   NewEmployeeInput,
   AdminCenter,
   AdminConfig,
+  AdminAuthStatus,
+  AdminCreateUserInput,
+  AdminCreateUserResult,
+  AdminResetPasswordResult,
+  AdminUpdateUserAccessInput,
+  AdminUpdateUserAccessResult,
+  AdminUserAuditEvent,
+  AdminUserList,
   AdminPaymentType,
   AdminShiftTemplate,
   Adjustment,
@@ -231,6 +241,17 @@ export class MockWdrApi implements WdrApi {
   }
 
   async signOut(): Promise<void> {
+    this.signedIn = false;
+    this.notify();
+  }
+
+  async changePassword(currentPassword: string, newPassword: string): Promise<void> {
+    await delay(120);
+    if (!this.signedIn) throw new WdrApiError('Sesija nije važeća.', 'UNAUTHENTICATED');
+    const problem = newPasswordProblem(newPassword, currentPassword, (await this.getSession())?.email ?? null);
+    if (problem) throw new WdrApiError('Nova lozinka ne ispunjava pravila.', problem);
+    if (currentPassword.length < 4) throw new WdrApiError('Trenutna lozinka nije ispravna.', 'CURRENT_PASSWORD_INVALID');
+    // Kao server: sve sesije se gase → nova prijava.
     this.signedIn = false;
     this.notify();
   }
@@ -2633,6 +2654,62 @@ export class MockWdrApi implements WdrApi {
     throw new WdrApiError(
       'Upravljanje korisnicima nije dostupno u mock režimu — potrebna je baza.', 'MOCK',
     );
+  }
+
+  // --- Admin → Korisnici (mock preslikava 0076 + Edge Function) -------------
+  /** Javno da testovi mogu da simuliraju prihvaćen poziv ili nedostupnu funkciju. */
+  readonly userDirectory = new MockUserDirectory();
+
+  async adminListUsers(): Promise<AdminUserList> {
+    await delay(80);
+    this.requireAdmin();
+    return this.userDirectory.list();
+  }
+
+  async adminUsersAuthStatus(): Promise<AdminAuthStatus[]> {
+    await delay(60);
+    this.requireAdmin();
+    return this.userDirectory.authStatus();
+  }
+
+  async adminCreateUser(input: AdminCreateUserInput): Promise<AdminCreateUserResult> {
+    await delay(150);
+    this.requireAdmin();
+    return this.userDirectory.create(input);
+  }
+
+  async adminUpdateUserAccess(input: AdminUpdateUserAccessInput): Promise<AdminUpdateUserAccessResult> {
+    await delay(100);
+    this.requireAdmin();
+    return this.userDirectory.update(input);
+  }
+
+  async adminDeactivateUser(profileId: Uuid, reason?: string | null) {
+    await delay(100);
+    this.requireAdmin();
+    const r = this.userDirectory.setActive(profileId, false, reason);
+    return { profile_id: profileId, active: false as const, changed: r.changed,
+             auth_ban: this.userDirectory.edgeAvailable ? 'ok' as const : 'skipped' as const };
+  }
+
+  async adminReactivateUser(profileId: Uuid, reason?: string | null) {
+    await delay(100);
+    this.requireAdmin();
+    const r = this.userDirectory.setActive(profileId, true, reason);
+    return { profile_id: profileId, active: true as const, changed: r.changed,
+             auth_unban: this.userDirectory.edgeAvailable ? 'ok' as const : 'skipped' as const };
+  }
+
+  async adminResetPassword(profileId: Uuid, reason?: string | null): Promise<AdminResetPasswordResult> {
+    await delay(100);
+    this.requireAdmin();
+    return this.userDirectory.resetPassword(profileId, reason);
+  }
+
+  async adminUserAudit(profileId: Uuid): Promise<AdminUserAuditEvent[]> {
+    await delay(60);
+    this.requireAdmin();
+    return this.userDirectory.auditFor(profileId);
   }
 
 

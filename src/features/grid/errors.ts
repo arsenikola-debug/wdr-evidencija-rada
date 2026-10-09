@@ -5,6 +5,52 @@ import { localizeIsoDates } from '../../lib/format/date';
  * RPCs raise (see docs/RPC-CONTRACTS.md).
  */
 const MESSAGES: Record<string, string> = {
+  // --- Admin → Korisnici (0076 + Edge Function wdr-admin-users) -------------
+  USER_ALREADY_EXISTS: 'Korisnik sa ovim emailom već postoji. Otvorite ga i izmenite pristup.',
+  ADMIN_EMAIL_ALREADY_LINKED: 'Korisnik sa ovim emailom već postoji.',
+  ADMIN_INVALID_EMAIL: 'Email nije ispravnog oblika.',
+  ADMIN_INVALID_FULL_NAME: 'Ime i prezime su obavezni (najviše 120 znakova ukupno).',
+  ADMIN_ROLE_REQUIRED: 'Korisniku mora biti dodeljena bar jedna uloga.',
+  ADMIN_UNKNOWN_ROLE: 'Izabrana uloga više ne postoji. Osvežite stranicu.',
+  ADMIN_UNKNOWN_CENTER: 'Izabrani centar ne postoji. Osvežite stranicu.',
+  ADMIN_CENTER_INACTIVE: 'Pristup se ne dodeljuje neaktivnom centru.',
+  ADMIN_OVERRIDE_REASON_REQUIRED: 'Svaki izuzetak prava zahteva obrazloženje (najmanje 10 znakova).',
+  ADMIN_LAST_ADMIN: 'Izmena bi ostavila sistem bez ijednog aktivnog administratora.',
+  ADMIN_SELF_LOCKOUT: 'Ne možete sebi oduzeti pravo upravljanja korisnicima.',
+  ADMIN_SELF_DEACTIVATE: 'Ne možete deaktivirati sopstveni nalog.',
+  ADMIN_USER_NOT_FOUND: 'Korisnik ne postoji. Osvežite stranicu.',
+  AUTH_USER_MISSING: 'Auth nalog ovog korisnika ne postoji u Supabase-u.',
+  ADMIN_USERS_FN_UNAVAILABLE:
+    'Server funkcija za upravljanje korisnicima (wdr-admin-users) nije dostupna ili nije deployovana.',
+  ADMIN_USERS_FN_ERROR: 'Server funkcija za korisnike je vratila neočekivanu grešku.',
+  ORIGIN_NOT_ALLOWED: 'Ova adresa aplikacije nije dozvoljena za administraciju korisnika (WDR_ALLOWED_ORIGINS).',
+  DB_MIGRATION_MISSING: 'Migracija 0076 još nije primenjena na bazu.',
+  AUTH_BAN_FAILED: 'Blokada prijave u Supabase Auth-u nije uspela.',
+  AUTH_UNBAN_FAILED: 'Skidanje blokade prijave u Supabase Auth-u nije uspelo. Korisnik nije aktiviran.',
+  UNAUTHENTICATED: 'Sesija je istekla. Prijavite se ponovo.',
+  PROFILE_INACTIVE: 'Nalog je deaktiviran. Obratite se administratoru.',
+  CONFIG_MISSING: 'Server funkcija za korisnike nije potpuno podešena (Supabase tajne).',
+  // --- privremena lozinka / promena lozinke (0076, bez emaila) -------------
+  AUTH_USER_EXISTS_UNLINKED:
+    'Supabase Auth nalog sa ovim emailom već postoji, ali nije povezan sa WDR profilom.',
+  ADMIN_USER_INACTIVE: 'Korisnik je deaktiviran. Prvo ga ponovo aktivirajte.',
+  ADMIN_SELF_RESET: 'Sopstvenu lozinku menjate kroz „Promeni šifru", ne resetom.',
+  ADMIN_RESET_PRIVILEGED_TARGET:
+    'Ne možete resetovati lozinku korisniku koji ima prava koja vi nemate.',
+  TEMP_PASSWORD_NOT_SET:
+    'Privremena lozinka nije postavljena u Supabase Auth-u. Pokušajte „Generiši novu privremenu lozinku".',
+  CURRENT_PASSWORD_REQUIRED: 'Unesite trenutnu (privremenu) lozinku.',
+  CURRENT_PASSWORD_INVALID: 'Trenutna lozinka nije ispravna.',
+  PASSWORD_TOO_SHORT: 'Nova lozinka mora imati najmanje 10 znakova.',
+  PASSWORD_TOO_LONG: 'Nova lozinka je predugačka (najviše 72 bajta).',
+  SAME_PASSWORD: 'Nova lozinka mora biti različita od trenutne.',
+  PASSWORD_CONTAINS_EMAIL: 'Nova lozinka ne sme da sadrži vaš email (deo pre @).',
+  WEAK_PASSWORD: 'Lozinka ne zadovoljava pravila jačine lozinke. Izaberite dužu i raznovrsniju lozinku.',
+  PASSWORD_FLAG_NOT_CLEARED:
+    'Lozinka je promenjena, ali potvrda nije zabeležena. Prijavite se novom lozinkom i ponovite promenu.',
+  PROFILE_NOT_LINKED: 'Prijavljeni korisnik nema povezan WDR profil. Obratite se administratoru.',
+  AUTH_RATE_LIMIT: 'Supabase Auth je privremeno ograničio zahteve. Pokušajte ponovo za nekoliko minuta.',
+  AUTH_SERVICE_ONLY: 'Ovu radnju sme da izvrši samo server.',
   EMPLOYEE_NOT_IN_CENTER:
     'Zaposleni ne pripada ovom centru — koristite unos ispomoći.',
   FOREIGN_SEGMENT_PRESENT:
