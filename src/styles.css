@@ -1470,3 +1470,40 @@ kbd {
 /* Najviše 4 modula po grupi: prelamanje u novi red umesto vodoravnog klizanja. */
 .admin-subnav { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 12px; }
 .admin-subnav .btn { text-decoration: none; }
+
+/* --- Korekcije obračuna → Nova korekcija: jedan ravan kontrolni red ----------- */
+/* Dva reda grida: labele gore, kontrole dole. Dugme stoji u redu kontrola, pa je
+   poravnato sa select/input poljima (ne sa labelama) — bez margin-top hacka. */
+.correction-open-form {
+  display: grid;
+  grid-template-columns: minmax(220px, 320px) minmax(240px, 1fr) auto;
+  grid-template-areas:
+    "label-orig label-reason ."
+    "orig       reason       submit";
+  column-gap: 12px;
+  row-gap: 4px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.correction-open-form .cof-label-orig { grid-area: label-orig; }
+.correction-open-form .cof-label-reason { grid-area: label-reason; }
+.correction-open-form .cof-orig { grid-area: orig; }
+.correction-open-form .cof-reason { grid-area: reason; }
+.correction-open-form .cof-submit { grid-area: submit; white-space: nowrap; }
+.correction-open-form label { font-size: 12px; align-self: end; }
+.correction-open-form select,
+.correction-open-form input,
+.correction-open-form .cof-submit {
+  height: 34px; box-sizing: border-box; margin: 0; min-width: 0; width: 100%;
+}
+.correction-open-form .cof-submit { width: auto; }
+@media (max-width: 720px) {
+  .correction-open-form {
+    grid-template-columns: 1fr;
+    grid-template-areas: "label-orig" "orig" "label-reason" "reason" "submit";
+  }
+  .correction-open-form .cof-submit { justify-self: start; }
+}
+
+/* --- Unos: akcija nad nacrtom (0077) ----------------------------------------- */
+.entry-draft-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin: 0 0 6px; }

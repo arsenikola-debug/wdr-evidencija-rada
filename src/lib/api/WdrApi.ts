@@ -43,6 +43,9 @@ import type {
   NewEmployeeInput,
   AdminCenter,
   AdminConfig,
+  DeleteDraftResult,
+  FirstSaveResult,
+  NewPeriodPreview,
   AdminAuthStatus,
   AdminCreateUserInput,
   AdminCreateUserResult,
@@ -339,6 +342,24 @@ export interface WdrApi {
    */
   changePassword(currentPassword: string, newPassword: string): Promise<void>;
   adminUserAudit(profileId: Uuid): Promise<AdminUserAuditEvent[]>;
+
+  /**
+   * 0077: pregled grida za NOVU prijavu bez ikakvog upisa (dry-run na serveru, ista
+   * prava kao createPeriodSubmission). Pravi nacrt se pravi tek pri prvoj izmeni.
+   */
+  previewNewPeriodSubmission(
+    centerId: Uuid, periodStart: IsoDate, periodEnd: IsoDate, baseType: SubmissionBaseType,
+  ): Promise<NewPeriodPreview>;
+  /**
+   * 0077: PRVO čuvanje nove prijave — kreiranje + prvi paket u JEDNOJ transakciji.
+   * Ako nijedan red nije upisan, server poništava sve (nema praznog nacrta).
+   */
+  createPeriodSubmissionWithEntries(
+    centerId: Uuid, periodStart: IsoDate, periodEnd: IsoDate, baseType: SubmissionBaseType,
+    entries: BulkEntryInput[],
+  ): Promise<FirstSaveResult>;
+  /** 0077: briše SAMO nacrt koji nikada nije poslat i SAMO njegov autor; server odbija sve ostalo. */
+  deleteDraftSubmission(submissionId: Uuid): Promise<DeleteDraftResult>;
 
   adminSetUserAccess(input: {
     profile_id: Uuid; active: boolean; role_codes?: string[] | null;

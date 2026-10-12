@@ -53,6 +53,9 @@ import type {
   NewEmployeeInput,
   AdminCenter,
   AdminConfig,
+  DeleteDraftResult,
+  FirstSaveResult,
+  NewPeriodPreview,
   AdminAuthStatus,
   AdminCreateUserInput,
   AdminCreateUserResult,
@@ -337,8 +340,10 @@ export class MockWdrApi implements WdrApi {
     await delay(120);
     return [
       // DEMO: stara zajednička prijava (pre 0074) — oba tipa u jednoj prijavi.
-      { id: SUBMISSION_B6, center_id: CENTER_B6, center_code: 'B6', period_id: PERIOD, period_label: '2026-W28 (06.07–12.07)', period_start: '2026-07-06', period_end: '2026-07-12', status: this.status, base_type: null },
-      ...this.createdSubmissions,
+      { id: SUBMISSION_B6, center_id: CENTER_B6, center_code: 'B6', period_id: PERIOD, period_label: '2026-W28 (06.07–12.07)', period_start: '2026-07-06', period_end: '2026-07-12', status: this.status, base_type: null, deletable_draft: false },
+      ...this.createdSubmissions.map((x) => ({
+        ...x, deletable_draft: x.status === 'DRAFT' && !this.everSubmitted.has(x.id),
+      })),
     ];
   }
 
@@ -432,6 +437,7 @@ export class MockWdrApi implements WdrApi {
       status: 'DRAFT',
       base_type: baseType,
     };
+    item.created_by = session.profile_id; // 0077: autor nacrta
     this.createdSubmissions.push(item);
 
     return {
@@ -464,6 +470,87 @@ export class MockWdrApi implements WdrApi {
   }
 
   // --- daily entry ---------------------------------------------------------
+
+  // --- 0077: nova prijava bez praznog nacrta + brisanje nacrta -------------------
+  /** Mock „dry-run": isto kao server — napravi, pročitaj, poništi. */
+  async previewNewPeriodSubmission(
+    centerId: Uuid, periodStart: IsoDate, periodEnd: IsoDate, baseType: SubmissionBaseType,
+  ): Promise<NewPeriodPreview> {
+    const before = this.createdSubmissions.length;
+    const r = await this.createPeriodSubmission(centerId, periodStart, periodEnd, baseType);
+    if (!r.created) return { preview: false, existing_submission_id: r.submission_id };
+    try {
+      const grid = await this.getGrid(r.submission_id);
+      const eligibility = await this.getEntryEligibility(r.submission_id);
+      return {
+        preview: true,
+        grid: { ...grid, submission: { ...grid.submission, id: '', period_id: '', preview: true } },
+        eligibility: { ...eligibility, submission_id: '' },
+      };
+    } finally {
+      this.createdSubmissions.length = before; // poništavanje — ništa ne ostaje
+    }
+  }
+
+  /** Mock prvog čuvanja: isto kao server — bez upisanog reda sve se poništava. */
+  async createPeriodSubmissionWithEntries(
+    centerId: Uuid, periodStart: IsoDate, periodEnd: IsoDate, baseType: SubmissionBaseType,
+    entries: BulkEntryInput[],
+  ): Promise<FirstSaveResult> {
+    if (entries.length === 0) throw new WdrApiError('Prvo čuvanje zahteva bar jedan unos (FIRST_SAVE_EMPTY).', 'FIRST_SAVE_EMPTY');
+    const before = this.createdSubmissions.length;
+    const entriesBefore = structuredClone(this.entries);
+    const submission = await this.createPeriodSubmission(centerId, periodStart, periodEnd, baseType);
+    try {
+      if (this.failNextFirstSave) {
+        this.failNextFirstSave = false;
+        throw new WdrApiError('Simulirana greška mreže/baze pri prvom upisu.', 'FIRST_SAVE_FAILED');
+      }
+      const upsert = await this.bulkUpsert(submission.submission_id, entries, false);
+      if (submission.created && upsert.succeeded === 0) {
+        const first = upsert.results.find((r) => r.status === 'ERROR');
+        throw new WdrApiError(`Prvi unos nije sačuvan, nacrt nije napravljen: ${first?.error_message ?? '—'} (FIRST_SAVE_FAILED).`,
+          'FIRST_SAVE_FAILED');
+      }
+      return { submission, upsert };
+    } catch (err) {
+      // „rollback": ni prijava ni unosi ne ostaju
+      this.createdSubmissions.length = before;
+      this.entries = entriesBefore;
+      throw err;
+    }
+  }
+
+  /** Test pomoćnik: sledeće prvo čuvanje pada posle kreiranja (simulacija prekida). */
+  failNextFirstSave = false;
+
+  async deleteDraftSubmission(submissionId: Uuid): Promise<DeleteDraftResult> {
+    await delay(80);
+    const session = await this.getSession();
+    if (!session || !session.permissions.includes('entry.edit_draft')) {
+      throw new WdrApiError('Nedovoljna prava: potrebna permisija entry.edit_draft.', '42501');
+    }
+    const i = this.createdSubmissions.findIndex((x) => x.id === submissionId);
+    const item = i >= 0 ? this.createdSubmissions[i]
+      : submissionId === SUBMISSION_B6 ? { id: SUBMISSION_B6, status: this.status, center_id: CENTER_B6,
+          period_start: '2026-07-06', period_end: '2026-07-12' } : null;
+    if (!item) throw new WdrApiError('Prijava ne postoji (SUBMISSION_NOT_FOUND).', 'SUBMISSION_NOT_FOUND');
+    if (i < 0 || item.status !== 'DRAFT' || this.everSubmitted.has(submissionId)) {
+      throw new WdrApiError('Može se obrisati samo nacrt koji nikada nije poslat (DRAFT_DELETE_NOT_DRAFT).',
+        'DRAFT_DELETE_NOT_DRAFT');
+    }
+    const author = (this.createdSubmissions[i] as SubmissionListItem).created_by ?? null;
+    if (!author || author !== session.profile_id) {
+      throw new WdrApiError('Nacrt može da obriše samo korisnik koji ga je napravio (DRAFT_DELETE_NOT_AUTHOR).',
+        'DRAFT_DELETE_NOT_AUTHOR');
+    }
+    this.createdSubmissions.splice(i, 1);
+    return { deleted: true, submission_id: submissionId, center_id: item.center_id,
+             period_start: item.period_start, period_end: item.period_end };
+  }
+
+  /** Mock: prijave koje su bar jednom poslate (ne smeju se brisati ni kada su DRAFT). */
+  readonly everSubmitted = new Set<string>();
 
   async getGrid(submissionId: Uuid): Promise<GridPayload> {
     await delay(200);

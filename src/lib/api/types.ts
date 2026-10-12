@@ -48,6 +48,11 @@ export interface GridSubmission {
   review_confirmed: boolean;
   editable: boolean;
   can_write: boolean;
+  /**
+   * 0077: pregled NOVE prijave koja još ne postoji u bazi (dry-run). `id` je tada
+   * prazan string; pravi nacrt nastaje tek pri prvoj smislenoj izmeni.
+   */
+  preview?: boolean;
 }
 
 export interface AttendanceStatusRef {
@@ -460,6 +465,13 @@ export interface SessionProfile {
 }
 
 export interface SubmissionListItem {
+  /**
+   * 0077: nacrt koji nikada nije napustio DRAFT — samo ga takav sme da obriše.
+   * Pomoć za prikaz dugmeta; konačnu proveru radi server (rpc_delete_draft_submission).
+   */
+  deletable_draft?: boolean;
+  /** Autor nacrta: „Obriši nacrt" je dozvoljen samo njemu (server: created_by = pozivalac). */
+  created_by?: Uuid | null;
   id: Uuid;
   center_id: Uuid;
   center_code: string;
@@ -2273,4 +2285,27 @@ export interface AdminUserAuditEvent {
   actor_id: Uuid | null;
   actor_name: string | null;
   changes: unknown;
+}
+
+// =============================================================================
+// 0077 — nova prijava bez praznog nacrta + brisanje nacrta
+// =============================================================================
+
+/** Pregled nove prijave bez upisa, ili ID postojeće prijave koju treba otvoriti. */
+export type NewPeriodPreview =
+  | { preview: true; grid: GridPayload; eligibility: EntryEligibility }
+  | { preview: false; existing_submission_id: Uuid };
+
+/** 0077: prvo čuvanje nove prijave — kreiranje i prvi paket u jednoj transakciji. */
+export interface FirstSaveResult {
+  submission: CreatePeriodSubmissionResult;
+  upsert: BulkUpsertResult;
+}
+
+export interface DeleteDraftResult {
+  deleted: true;
+  submission_id: Uuid;
+  center_id: Uuid;
+  period_start: IsoDate;
+  period_end: IsoDate;
 }

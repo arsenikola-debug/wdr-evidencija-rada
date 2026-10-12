@@ -3,6 +3,7 @@ import type {
   AttendanceStatusCode,
   BulkEntryInput,
   BulkUpsertResult,
+  EntryEligibility,
   GridPayload,
   Uuid,
 } from '../../lib/api/types';
@@ -110,7 +111,68 @@ export interface UseGridResult {
 
 const EMPTY_INDEX: CellIndex = new Map();
 
-export function useGrid(api: WdrApi, submissionId: Uuid | null): UseGridResult {
+/**
+ * Usvajanje novog nacrta TEK posle uspešnog prvog čuvanja: ako `create` padne,
+ * `adopt` se ne poziva (grid ostaje u pregledu, ćelije nose grešku za ponovni pokušaj).
+ */
+/**
+ * Usvajanje samo ako je korisnik i dalje u ISTOM pregledu u kom je otkucao prvi
+ * paket. Kasno prvo čuvanje starog pregleda čuva nacrt u svom periodu, ali
+ * korisnika ne vraća tamo.
+ */
+export function adoptIfCurrent(
+  keyAtEntry: string, currentKey: () => string, adopt: (id: Uuid) => void,
+): (id: Uuid) => void {
+  return (id) => {
+    if (currentKey() === keyAtEntry) adopt(id);
+  };
+}
+
+export function withAdoption<T extends { submissionId: Uuid }>(
+  create: (batch: BulkEntryInput[]) => Promise<T>,
+  adopt: (id: Uuid) => void,
+): (batch: BulkEntryInput[]) => Promise<T> {
+  return async (batch) => {
+    const r = await create(batch);
+    adopt(r.submissionId);
+    return r;
+  };
+}
+
+/**
+ * 0077: nova prijava koja još ne postoji — grid iz dry-run pregleda. Pravi nacrt
+ * pravi `ensureSubmission` pri prvoj smislenoj izmeni (autosave).
+ */
+export interface GridPreviewOptions {
+  preview: { grid: GridPayload; eligibility: EntryEligibility } | null;
+  /**
+   * PRVO čuvanje: kreiranje + prvi paket u jednoj serverskoj transakciji
+   * (rpc_create_period_submission_with_entries). Vraća ID tek posle uspeha.
+   */
+  createWithFirstBatch?: (batch: BulkEntryInput[]) => Promise<{ submissionId: Uuid; result: BulkUpsertResult }>;
+  /** Pozvano TEK posle uspešnog prvog čuvanja (ovde se menja URL). */
+  onAdopted?: (id: Uuid) => void;
+  /**
+   * Identitet pregleda (centar|od|do|tip). Paketi su vezani za njega; kasno prvo
+   * čuvanje STAROG pregleda nikad ne prebacuje korisnika (nema usvajanja).
+   */
+  previewKey?: string;
+  /** Unos zaključan (npr. dok traje brisanje nacrta): ništa novo ne ulazi u autosave. */
+  readOnly?: boolean;
+  /** Ponovno čitanje pregleda (npr. posle dodavanja zaposlenog). */
+  reloadPreview?: () => Promise<void>;
+}
+
+export function useGrid(
+  api: WdrApi,
+  submissionId: Uuid | null,
+  previewOptions: GridPreviewOptions = { preview: null },
+): UseGridResult {
+  const { preview } = previewOptions;
+  const previewOpts = useRef(previewOptions);
+  previewOpts.current = previewOptions;
+  /** ID nacrta koji je autosave upravo napravio — prelazak bez treptanja i skoka fokusa. */
+  const adoptedRef = useRef<Uuid | null>(null);
   const [payload, setPayload] = useState<GridPayload | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -140,11 +202,37 @@ export function useGrid(api: WdrApi, submissionId: Uuid | null): UseGridResult {
     [payload, employees],
   );
   const dates = payload?.dates ?? [];
-  const editable = Boolean(payload?.submission.editable && payload?.submission.can_write);
+  const editable = Boolean(payload?.submission.editable && payload?.submission.can_write && !previewOptions.readOnly);
+  // Kontekst autosave-a: postojeća prijava ili pregled nove prijave.
+  const contextKey = submissionId ?? (preview ? `preview:${previewOptions.previewKey ?? ''}` : 'none');
+  const contextKeyRef = useRef(contextKey);
+  contextKeyRef.current = contextKey;
 
   const load = useCallback(async () => {
     if (!submissionId) {
-      setPayload(null);
+      if (preview) {
+        // Pregled nove prijave: ništa nije upisano; grid je onakav kakav bi bio nacrt.
+        setPayload(preview.grid);
+        setEligibility(buildEligibilityIndex(preview.eligibility));
+        setExpectedMode(defaultExpectedMode(preview.grid.dates));
+        setSelection(singleCell(0, 0));
+        setLoadError(null);
+      } else {
+        setPayload(null);
+      }
+      return;
+    }
+    if (adoptedRef.current === submissionId) {
+      // Nacrt je upravo nastao iz ovog grida: tiho osveži, bez resetovanja fokusa,
+      // dozvoljenih dana i režima očekivanih dana.
+      adoptedRef.current = null;
+      try {
+        const [p, e] = await Promise.all([api.getGrid(submissionId), api.getEntryEligibility(submissionId)]);
+        setPayload(p);
+        setEligibility(buildEligibilityIndex(e));
+      } catch {
+        // Neuspelo pozadinsko osvežavanje ne sme da obriše grid koji se koristi.
+      }
       return;
     }
     setLoading(true);
@@ -180,7 +268,7 @@ export function useGrid(api: WdrApi, submissionId: Uuid | null): UseGridResult {
     } finally {
       setLoading(false);
     }
-  }, [api, submissionId]);
+  }, [api, submissionId, preview]);
 
   useEffect(() => {
     void load();
@@ -188,7 +276,8 @@ export function useGrid(api: WdrApi, submissionId: Uuid | null): UseGridResult {
 
   // --- autosave -------------------------------------------------------------
 
-  const onFlushStart = useCallback((keys: string[]) => {
+  const onFlushStart = useCallback((keys: string[], stale?: boolean) => {
+    if (stale) return; // paket prethodnog konteksta: tekući grid se ne dira
     setSaveMap((m) => markSaving(m, keys));
   }, []);
 
@@ -198,7 +287,9 @@ export function useGrid(api: WdrApi, submissionId: Uuid | null): UseGridResult {
   }, []);
 
   const onResult = useCallback(
-    (result: BulkUpsertResult, _keys: string[]) => {
+    (result: BulkUpsertResult, _keys: string[], stale?: boolean) => {
+      // Paket prethodnog konteksta je sačuvan u SVOJU prijavu; tekući grid ostaje isti.
+      if (stale) return;
       setSaveMap((m) => applyResults(m, result.results, messageForCode));
       setPayload((prev) =>
         prev ? { ...prev, validation: result.validation } : prev,
@@ -212,8 +303,13 @@ export function useGrid(api: WdrApi, submissionId: Uuid | null): UseGridResult {
     [scheduleDecay],
   );
 
-  const onError = useCallback((err: unknown, _keys: string[]) => {
+  const onError = useCallback((err: unknown, _keys: string[], stale?: boolean) => {
     const msg = messageForCode(null, err instanceof Error ? err.message : undefined);
+    if (stale) {
+      // Ne sme da nestane tiho: korisnik je u drugoj prijavi, ali mora da zna.
+      setNotice(`Izmene iz prethodno otvorene prijave nisu sačuvane: ${msg}`);
+      return;
+    }
     setSaveMap((m) => revertInFlight(m, msg));
     setNotice(msg);
   }, []);
@@ -225,6 +321,23 @@ export function useGrid(api: WdrApi, submissionId: Uuid | null): UseGridResult {
     onResult,
     onError,
     onFlushStart,
+    contextKey,
+    // Odbačen no-op paket u pregledu: ćelije više ne „čekaju slanje".
+    onDiscard: (keys, stale) => !stale && setSaveMap((m) => {
+      const next = { ...m };
+      for (const k of keys) delete next[k];
+      return next;
+    }),
+    // Vezano za OVAJ render (ovaj pregled), ne za tekući u trenutku slanja.
+    createWithFirstBatch: previewOptions.createWithFirstBatch
+      ? withAdoption(
+          previewOptions.createWithFirstBatch,
+          adoptIfCurrent(contextKey, () => contextKeyRef.current, (id) => {
+            adoptedRef.current = id; // PRE promene URL-a → load() radi tih prelaz
+            previewOptions.onAdopted?.(id);
+          }),
+        )
+      : undefined,
   });
 
   const refreshQuietly = useCallback(async () => {
@@ -459,7 +572,10 @@ export function useGrid(api: WdrApi, submissionId: Uuid | null): UseGridResult {
     setSelection,
     setExpectedMode,
     dismissNotice: () => setNotice(null),
-    reload: load,
+    reload: async () => {
+      if (!submissionId && previewOpts.current.reloadPreview) await previewOpts.current.reloadPreview();
+      else await load();
+    },
     flush: autosave.flush,
 
     move,

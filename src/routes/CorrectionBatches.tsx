@@ -89,21 +89,19 @@ export function CorrectionBatches({ mode }: { mode: 'operator' | 'finance' }) {
       {mode === 'operator' && (
         <section className="control-section">
           <h2>Nova korekcija</h2>
-          <div className="report-filters">
-            <label>
-              Odobren obračun
-              <select value={origId} onChange={(e) => setOrigId(e.target.value)}>
-                <option value="">—</option>
-                {approved.map((s) => (
-                  <option key={s.id} value={s.id}>{s.center_code} · {formatPeriod(s.period_start, s.period_end)}</option>
-                ))}
-              </select>
-            </label>
-            <label className="full-width">
-              Razlog (najmanje 10 znakova)
-              <input value={reason} onChange={(e) => setReason(e.target.value)} />
-            </label>
-            <button type="button" className="btn btn-primary"
+          {/* Grid sa dva reda (labele / kontrole): select, input i dugme su u istoj
+              horizontalnoj osi bez margin-top hackova; na uskom ekranu jedna kolona. */}
+          <div className="correction-open-form">
+            <label className="cof-label-orig" htmlFor="cof-orig">Odobren obračun</label>
+            <select id="cof-orig" className="cof-orig" value={origId} onChange={(e) => setOrigId(e.target.value)}>
+              <option value="">—</option>
+              {approved.map((s) => (
+                <option key={s.id} value={s.id}>{s.center_code} · {formatPeriod(s.period_start, s.period_end)}</option>
+              ))}
+            </select>
+            <label className="cof-label-reason" htmlFor="cof-reason">Razlog (najmanje 10 znakova)</label>
+            <input id="cof-reason" className="cof-reason" value={reason} onChange={(e) => setReason(e.target.value)} />
+            <button type="button" className="btn btn-primary cof-submit"
               disabled={busy || !origId || reason.trim().length < 10}
               onClick={() => void act(api.correctionBatchOpen(origId, reason)).then(() => setReason(''))}>
               Otvori korekciju

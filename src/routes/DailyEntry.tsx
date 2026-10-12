@@ -1,5 +1,5 @@
 import { formatPeriod } from '../lib/format/date';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Banner, CellLegend, EmptyState, KeyboardHelp, Spinner } from '../components/Bits';
 import { GridTable } from '../components/GridTable';
@@ -8,7 +8,10 @@ import { messageForCode } from '../features/grid/errors';
 import { mapKey } from '../features/grid/keyboard';
 import { useGrid } from '../features/grid/useGrid';
 import { WdrApiError } from '../lib/api';
-import type { PeriodSubmissionSlot, SubmissionBaseType, SubmissionListItem } from '../lib/api/types';
+import type {
+  EntryEligibility, GridPayload, PeriodSubmissionSlot, SubmissionBaseType, SubmissionListItem, Uuid,
+} from '../lib/api/types';
+import { DELETE_DRAFT_CONFIRM, canDeleteOwnDraft, deleteDraftSafely } from '../features/entry/drafts';
 import { useAuth } from '../lib/auth/AuthProvider';
 import { EntryBar } from '../components/EntryBar';
 import { InlineAddEmployee } from '../components/InlineAddEmployee';
@@ -51,7 +54,55 @@ export function DailyEntry() {
   }, [api]);
 
   const submissionId = params.get('prijava');
-  const grid = useGrid(api, submissionId);
+
+  /*
+   * 0077: NOVA prijava se ne pravi pri otvaranju. Server vraća pregled grida bez
+   * upisa (dry-run); pravi nacrt nastaje tek pri prvoj smislenoj izmeni (autosave
+   * → ensureSubmission). Otvaranje i izlazak bez izmene ne ostavljaju ništa.
+   */
+  type NewDraft = {
+    key: { centerId: Uuid; from: string; to: string; type: SubmissionBaseType };
+    preview: { grid: GridPayload; eligibility: EntryEligibility };
+  };
+  const [newDraft, setNewDraft] = useState<NewDraft | null>(null);
+  const newDraftRef = useRef<NewDraft | null>(null);
+  newDraftRef.current = newDraft;
+  const [deletedNotice, setDeletedNotice] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const grid = useGrid(api, submissionId, {
+    preview: !submissionId && newDraft ? newDraft.preview : null,
+    previewKey: newDraft
+      ? `${newDraft.key.centerId}|${newDraft.key.from}|${newDraft.key.to}|${newDraft.key.type}` : undefined,
+    readOnly: deleting,
+    // PRVO čuvanje: kreiranje + prvi paket u JEDNOJ transakciji. Ako padne, ne nastaje
+    // nacrt, grid ostaje u pregledu, a ćelije nose grešku (postojeći autosave).
+    // Vezano za pregled IZ OVOG rendera: paket otkucan u pregledu A nikad ne pravi B.
+    createWithFirstBatch: newDraft ? async (batch) => {
+      const k = newDraft.key;
+      const first = await api.createPeriodSubmissionWithEntries(k.centerId, k.from, k.to, k.type, batch);
+      const res = first.submission;
+      setSubmissions((list) => (list?.some((x) => x.id === res.submission_id) ? list : [{
+        id: res.submission_id, center_id: res.center_id, center_code: res.center_code,
+        period_id: res.period_id, period_label: res.period_label,
+        period_start: res.period_start, period_end: res.period_end, status: res.status,
+        // Autor samo ako je OVAJ poziv napravio prijavu; postojeća (npr. kolegina) nije moja.
+        base_type: res.base_type ?? k.type, deletable_draft: res.created,
+        created_by: res.created ? session?.profile_id ?? null : null,
+      }, ...(list ?? [])]));
+      return { submissionId: res.submission_id, result: first.upsert };
+    } : undefined,
+    onAdopted: (id) => {
+      setNewDraft(null);
+      setParams({ prijava: id }, { replace: true });
+    },
+    reloadPreview: async () => {
+      const k = newDraftRef.current?.key;
+      if (!k) return;
+      const pv = await api.previewNewPeriodSubmission(k.centerId, k.from, k.to, k.type);
+      if (pv.preview) setNewDraft({ key: k, preview: { grid: pv.grid, eligibility: pv.eligibility } });
+    },
+  });
 
   // --- K1: centar + period otvaraju (ili kreiraju) JEDNU prijavu -------------
   const writableCenters = useMemo(
@@ -89,13 +140,11 @@ export function DailyEntry() {
   const [slots, setSlots] = useState<PeriodSubmissionSlot[] | null>(null);
   const [openNotice, setOpenNotice] = useState<string | null>(null);
 
-  function showSubmission(item: SubmissionListItem) {
-    setSubmissions((list) => (list?.some((x) => x.id === item.id) ? list : [item, ...(list ?? [])]));
-    setParams({ prijava: item.id });
-  }
-
   async function openPeriod(centerId: string, from: string, to: string, type: SubmissionBaseType) {
     setOpening(true);
+    // Pre promene konteksta: sve otkucano u trenutnoj prijavi/pregledu se šalje i
+    // ČEKA (i slanje koje je već u toku). Ništa ne prelazi u novi period.
+    await grid.flush();
     setOpenError(null);
     setOpenNotice(null);
     setCopyInfo(null);
@@ -110,6 +159,7 @@ export function DailyEntry() {
       if (d.kind === 'open' || d.kind === 'legacy') {
         const fresh = await api.listSubmissions();
         setSubmissions(fresh);
+        setNewDraft(null);
         setParams({ prijava: d.submissionId });
         if (d.kind === 'legacy') {
           setOpenNotice('Za ovaj period postoji stara zajednička prijava (Karnet + Obuka iz vremena pre razdvajanja). '
@@ -120,18 +170,23 @@ export function DailyEntry() {
         return;
       }
       try {
-        const res = await api.createPeriodSubmission(centerId, from, to, type);
-        showSubmission({
-          id: res.submission_id, center_id: res.center_id, center_code: res.center_code,
-          period_id: res.period_id, period_label: res.period_label,
-          period_start: res.period_start, period_end: res.period_end, status: res.status,
-          base_type: res.base_type ?? type,
-        });
-        setSlots((await api.periodSubmissionSlots(centerId, from, to)).slots);
+        // 0077: pregled bez upisa — iste provere prava i perioda kao pravo otvaranje.
+        const pv = await api.previewNewPeriodSubmission(centerId, from, to, type);
+        if (!pv.preview) {
+          // U međuvremenu je nastala (npr. kolega): otvara se postojeća.
+          setSubmissions(await api.listSubmissions());
+          setNewDraft(null);
+          setParams({ prijava: pv.existing_submission_id });
+          return;
+        }
+        setDeletedNotice(null);
+        setNewDraft({ key: { centerId, from, to, type }, preview: { grid: pv.grid, eligibility: pv.eligibility } });
+        setParams({});
       } catch (err) {
         const legacy = sl.slots.find((x) => x.base_type === 'LEGACY');
         if (err instanceof WdrApiError && err.code === 'PERIOD_LEGACY_COMBINED' && legacy) {
           setSubmissions(await api.listSubmissions());
+          setNewDraft(null);
           setParams({ prijava: legacy.submission_id });
           setOpenNotice('Za ovaj period postoji stara zajednička prijava sa unosima i Karneta i Obuke. '
             + 'Otvorena je u starom režimu (ne razdvaja se automatski).');
@@ -193,7 +248,10 @@ export function DailyEntry() {
       return;
     }
     try {
-      const [prevGrid, curGrid] = await Promise.all([api.getGrid(prev.id), api.getGrid(current.id)]);
+      const [prevGrid, curGrid] = await Promise.all([
+        api.getGrid(prev.id),
+        current.id ? api.getGrid(current.id) : Promise.resolve(grid.payload!),
+      ]);
       const now = new Set(curGrid.employees.map((e) => e.employee_id));
       const kept = prevGrid.employees.filter((e) => now.has(e.employee_id));
       const gone = prevGrid.employees.filter((e) => !now.has(e.employee_id));
@@ -307,12 +365,41 @@ export function DailyEntry() {
     }
   }
 
+  /** 0077: „Obriši nacrt" — samo nikad-poslat nacrt; server proverava ponovo. */
+  const isPreview = !submissionId && Boolean(newDraft);
+  // Samo AUTOR nikad-poslatog nacrta (server proverava created_by ponovo).
+  const canDeleteDraft = Boolean(submissionId && current && canDeleteOwnDraft(current, session?.profile_id)
+    && can('entry.edit_draft'));
+  async function deleteDraft() {
+    if (!submissionId || !window.confirm(DELETE_DRAFT_CONFIRM)) return;
+    const id = submissionId;
+    try {
+      await deleteDraftSafely({
+        lock: () => setDeleting(true),   // unos zaključan dok traje čekanje i brisanje
+        unlock: () => setDeleting(false),
+        flush: () => grid.flush(),       // šalje i ČEKA i slanje koje je već u toku
+        remove: () => api.deleteDraftSubmission(id),
+        after: async () => {
+          setSubmissions(await api.listSubmissions());
+          setNewDraft(null);
+          setParams({});
+          setDeleting(false);
+          setDeletedNotice('Nacrt je obrisan.');
+        },
+      });
+    } catch (err) {
+      const code = err instanceof WdrApiError ? err.code : null;
+      setOpenError(messageForCode(code, err instanceof Error ? err.message : undefined));
+    }
+  }
+
   if (listError) return <Banner kind="error">{listError}</Banner>;
   if (!submissions) return <Spinner label="Učitavanje perioda…" />;
-  if (!submissionId) {
+  if (!submissionId && !newDraft) {
     return (
       <div className="entry-page">
         {entryBar}
+        {deletedNotice && <Banner kind="success" onClose={() => setDeletedNotice(null)}>{deletedNotice}</Banner>}
         <EmptyState
           title="Izaberite centar i period"
           hint={writableCenters.length > 0
@@ -342,6 +429,21 @@ export function DailyEntry() {
     <div className="entry-page">
       {entryBar}
       {openNotice && <Banner kind="info" onClose={() => setOpenNotice(null)}>{openNotice}</Banner>}
+      {isPreview && (
+        <Banner kind="info">
+          Nov unos — ništa nije sačuvano. Nacrt se pravi tek kada unesete prvi podatak; ako izađete bez
+          izmene, ništa ne ostaje.
+        </Banner>
+      )}
+      {canDeleteDraft && (
+        <div className="entry-draft-actions">
+          <span className="muted small">Nacrt (nije poslat)</span>
+          <button type="button" className="btn btn-small btn-danger" disabled={deleting}
+            onClick={() => void deleteDraft()}>
+            {deleting ? 'Brisanje…' : 'Obriši nacrt'}
+          </button>
+        </div>
+      )}
       {otherPending && barState.matchesCurrent && (
         <Banner kind="info">
           {TYPE_NAME[selType]} za ovaj period je već poslat.{' '}
@@ -385,10 +487,9 @@ export function DailyEntry() {
         expectedMode={grid.expectedMode}
         onExpectedMode={(mode) => {
           grid.setExpectedMode(mode);
-          window.localStorage.setItem(
-            `wdr:expected-mode:${grid.payload!.submission.id}`,
-            mode,
-          );
+          if (grid.payload!.submission.id) {
+            window.localStorage.setItem(`wdr:expected-mode:${grid.payload!.submission.id}`, mode);
+          }
         }}
         saveSummary={grid.saveSummary}
         autosave={grid.autosave}
@@ -397,6 +498,12 @@ export function DailyEntry() {
         onClear={grid.clearSelection}
         onCopyDay={grid.copyPreviousDay}
         onOpenPreview={() => {
+          if (!grid.payload!.submission.id) {
+            // Pregled nove prijave: nema šta da se pregleda dok nacrt ne postoji.
+            void grid.flush();
+            setOpenNotice('Nacrt još nije sačuvan — unesite bar jedan podatak, pa otvorite pregled.');
+            return;
+          }
           void grid.flush().then(() =>
             navigate(`/unos/pregled?prijava=${grid.payload!.submission.id}`),
           );

@@ -6,6 +6,9 @@ import type { SubmissionListItem, SubmissionStatus } from '../lib/api/types';
 import { Banner, EmptyState, Spinner, StatusBadge } from '../components/Bits';
 import { messageForCode } from '../features/grid/errors';
 import { formatDay } from '../features/analytics/period';
+import { DELETE_DRAFT_CONFIRM, canDeleteOwnDraft } from '../features/entry/drafts';
+import { formatPeriod } from '../lib/format/date';
+import { WdrApiError } from '../lib/api';
 
 /**
  * Moji unosi — životni ciklus perioda.
@@ -45,7 +48,7 @@ function matches(status: SubmissionStatus, f: Filter): boolean {
 }
 
 export function MySubmissions() {
-  const { api, can } = useAuth();
+  const { api, can, session } = useAuth();
   const [items, setItems] = useState<SubmissionListItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>('sve');
@@ -69,6 +72,25 @@ export function MySubmissions() {
   }, [api]);
 
   useEffect(load, [load]);
+
+  // 0077: brisanje SAMO nikad-poslatog nacrta; server proverava status i prava ponovo.
+  const [notice, setNotice] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  async function deleteDraft(s: SubmissionListItem) {
+    if (!window.confirm(DELETE_DRAFT_CONFIRM)) return;
+    setDeletingId(s.id);
+    setNotice(null);
+    try {
+      await api.deleteDraftSubmission(s.id);
+      setItems(await api.listSubmissions());
+      setNotice({ kind: 'success', text: `Nacrt ${s.center_code} · ${formatPeriod(s.period_start, s.period_end)} je obrisan.` });
+    } catch (err) {
+      const code = err instanceof WdrApiError ? err.code : null;
+      setNotice({ kind: 'error', text: messageForCode(code, err instanceof Error ? err.message : undefined) });
+    } finally {
+      setDeletingId(null);
+    }
+  }
 
   const sorted = useMemo(
     () => [...(items ?? [])].sort((a, b) => b.period_start.localeCompare(a.period_start)),
@@ -116,6 +138,8 @@ export function MySubmissions() {
   return (
     <div className="page">
       {head}
+
+      {notice && <Banner kind={notice.kind} onClose={() => setNotice(null)}>{notice.text}</Banner>}
 
       {returnedCount > 0 && (
         <Banner kind="warning">
@@ -195,6 +219,12 @@ export function MySubmissions() {
                         <Link className="btn btn-quiet" to={`/unos?prijava=${s.id}`}>
                           Pregled
                         </Link>
+                      )}
+                      {canDeleteOwnDraft(s, session?.profile_id) && can('entry.edit_draft') && (
+                        <button type="button" className="btn btn-danger"
+                          disabled={deletingId === s.id} onClick={() => void deleteDraft(s)}>
+                          {deletingId === s.id ? 'Brisanje…' : 'Obriši nacrt'}
+                        </button>
                       )}
                       {approved && canCorrect && (
                         <Link className="btn btn-quiet" to="/dodatni-zahtevi">

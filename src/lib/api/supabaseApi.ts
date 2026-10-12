@@ -4,6 +4,7 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { effectivePermissions, roleCodes } from '../../features/auth/permissions';
 import { WdrApiError, type WdrApi } from './WdrApi';
 import { ADMIN_USERS_FUNCTION, edgeErrorToWdr } from './edgeFunction';
+import { isDeletableDraft } from '../../features/entry/drafts';
 import type {
   AdminAttendanceStatus,
   AdminPayoutReport,
@@ -48,6 +49,9 @@ import type {
   NewEmployeeInput,
   AdminCenter,
   AdminConfig,
+  DeleteDraftResult,
+  FirstSaveResult,
+  NewPeriodPreview,
   AdminAuthStatus,
   AdminCreateUserInput,
   AdminCreateUserResult,
@@ -290,7 +294,7 @@ export class SupabaseWdrApi implements WdrApi {
     let q = this.rest
       .from('period_submissions')
       .select(
-        'id, center_id, period_id, period_start, period_end, status, centers(code), submission_periods(label), base_payment_type_id, payment_types(code)',
+        'id, center_id, period_id, period_start, period_end, status, submitted_at, returned_at, approved_at, closed_at, created_by, centers(code), submission_periods(label), base_payment_type_id, payment_types(code)',
       )
       .order('period_start', { ascending: false });
 
@@ -338,6 +342,13 @@ export class SupabaseWdrApi implements WdrApi {
       period_end: r.period_end as string,
       status: r.status as SubmissionListItem['status'],
       return_reason: returnReasons.get(r.id as string) ?? null,
+      // 0077: samo nikad-poslat nacrt nudi „Obriši nacrt" (server proverava ponovo).
+      deletable_draft: isDeletableDraft({
+        status: r.status as SubmissionListItem['status'],
+        submitted_at: r.submitted_at as string | null, returned_at: r.returned_at as string | null,
+        approved_at: r.approved_at as string | null, closed_at: r.closed_at as string | null,
+      }),
+      created_by: (r.created_by as string | null) ?? null,
       // 0074: KARNET/OBUKA; null = stara zajednička prijava.
       base_type: r.base_payment_type_id
         ? ((firstOf(r.payment_types as { code?: string } | { code?: string }[] | null)?.code ?? null) as
@@ -390,6 +401,41 @@ export class SupabaseWdrApi implements WdrApi {
   }
 
   // --- daily entry ---------------------------------------------------------
+
+  async previewNewPeriodSubmission(
+    centerId: Uuid, periodStart: IsoDate, periodEnd: IsoDate, baseType: SubmissionBaseType,
+  ): Promise<NewPeriodPreview> {
+    const r = await this.rpc<{
+      preview: boolean; existing_submission_id?: Uuid;
+      grid?: GridPayload & { submission: GridPayload['submission'] & { id: Uuid | null } };
+      eligibility?: EntryEligibility;
+    }>('rpc_preview_new_period_submission', {
+      p_center_id: centerId, p_period_start: periodStart, p_period_end: periodEnd, p_base_type: baseType,
+    });
+    if (!r.preview || !r.grid || !r.eligibility) {
+      return { preview: false, existing_submission_id: r.existing_submission_id as Uuid };
+    }
+    // Server namerno ne vraća ID (prijava ne postoji); u modelu je to prazan string + preview.
+    return {
+      preview: true,
+      grid: { ...r.grid, submission: { ...r.grid.submission, id: '', period_id: '', preview: true } },
+      eligibility: { ...r.eligibility, submission_id: '' },
+    };
+  }
+
+  async createPeriodSubmissionWithEntries(
+    centerId: Uuid, periodStart: IsoDate, periodEnd: IsoDate, baseType: SubmissionBaseType,
+    entries: BulkEntryInput[],
+  ): Promise<FirstSaveResult> {
+    return this.rpc<FirstSaveResult>('rpc_create_period_submission_with_entries', {
+      p_center_id: centerId, p_period_start: periodStart, p_period_end: periodEnd,
+      p_base_type: baseType, p_entries: entries,
+    });
+  }
+
+  async deleteDraftSubmission(submissionId: Uuid): Promise<DeleteDraftResult> {
+    return this.rpc<DeleteDraftResult>('rpc_delete_draft_submission', { p_submission_id: submissionId });
+  }
 
   async getGrid(submissionId: Uuid): Promise<GridPayload> {
     return this.rpc<GridPayload>('rpc_get_grid', { p_submission_id: submissionId });
