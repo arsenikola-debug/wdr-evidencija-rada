@@ -1,4 +1,9 @@
-import { ADMIN_ENTRY_PERMISSIONS } from '../features/admin/adminNavigation';
+import { ADMIN_ENTRY_PERMISSIONS, ADMIN_GROUPS } from '../features/admin/adminNavigation';
+
+/** Rute administrativnih modula sa landinga (bez sekcija `?modul=`, koje su na /administracija). */
+const ADMIN_ROUTE_MODULES = ADMIN_GROUPS.flatMap((g) => g.modules)
+  .flatMap((m) => (m.kind === 'route' ? [{ to: m.to, label: m.label }] : []));
+export const ADMIN_ROUTE_MODULE_PATHS: string[] = ADMIN_ROUTE_MODULES.map((m) => m.to);
 import { isVisibleForProfile, type UiProfile } from '../features/auth/profile';
 
 /**
@@ -138,23 +143,10 @@ export const NAV_GROUPS: NavGroup[] = [
         // (isto pravilo kao AdminEntryGate na ruti). Sekcije traže centers.manage.
         to: '/administracija', label: 'Administracija', end: true,
         anyPermission: ADMIN_ENTRY_PERMISSIONS, icon: 'settings', profiles: ['admin'],
-      },
-      {
-        // Kreiranje/poziv, uloge, centri, (de)aktivacija — 0076 + Edge Function.
-        to: '/administracija/korisnici', label: 'Korisnici',
-        permission: 'users.manage', icon: 'users', profiles: ['admin'],
-      },
-      {
-        to: '/zaposleni', label: 'Zaposleni',
-        permission: 'employee.view', icon: 'users', profiles: ['admin'],
-      },
-      {
-        to: '/administracija/uvoz-zaposlenih', label: 'Uvoz zaposlenih',
-        permission: 'centers.manage', icon: 'users', profiles: ['admin'],
-      },
-      {
-        to: '/administracija/dodatne-isplate', label: 'Tarife dodatnih isplata',
-        permission: 'payout.cutover.manage', icon: 'wallet', profiles: ['admin'],
+        // Pojedinačni moduli (Korisnici, Zaposleni, Uvoz zaposlenih, Tarife dodatnih
+        // isplata) se otvaraju sa landinga; dok je korisnik na njima, aktivna je
+        // ova stavka. Izvedeno iz landing konfiguracije — rute i prava nepromenjeni.
+        alsoActiveOn: ADMIN_ROUTE_MODULE_PATHS,
       },
     ],
   },
@@ -172,4 +164,17 @@ export function navItemVisible(
   return isVisibleForProfile(profile, item.profiles)
     && (!item.permission || can(item.permission))
     && (!item.anyPermission || item.anyPermission.some((p) => can(p)));
+}
+
+/**
+ * Naslov u gornjoj traci: najduži prefiks iz bočnog menija ILI iz modula sa
+ * landinga Administracije. Moduli su uklonjeni iz menija, ali naslovi ostaju isti
+ * („Korisnici", „Zaposleni", …), a /administracija/izvestaji ostaje „Izveštaji isplata".
+ */
+export function pageTitle(pathname: string): string {
+  const all = [...NAV_GROUPS.flatMap((g) => g.items), ...ADMIN_ROUTE_MODULES];
+  const match = all
+    .filter((i) => (i.to === '/' ? pathname === '/' : pathname.startsWith(i.to)))
+    .sort((a, b) => b.to.length - a.to.length)[0];
+  return match?.label ?? 'WDR';
 }

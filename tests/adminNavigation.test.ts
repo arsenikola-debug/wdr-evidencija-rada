@@ -75,11 +75,14 @@ describe('svi postojeći moduli ostaju dostupni (proverava izvorni kod)', () => 
     expect(ADMIN_PAGE_PERMISSION).toBe('centers.manage');
   });
 
-  it('svi administrativni linkovi iz bočne navigacije su i u grupama (ništa ne nestaje)', () => {
-    const sidebar = NAV_GROUPS.find((g) => g.title === 'Administracija')!.items
-      .map((i) => i.to).filter((to) => to !== '/administracija');
+  it('bočni meni ima samo „Administracija"; sve ranije stavke menija su moduli na landingu', () => {
+    const sidebar = NAV_GROUPS.find((g) => g.title === 'Administracija')!.items.map((i) => i.to);
+    expect(sidebar).toEqual(['/administracija']);
     const inGroups = ADMIN_GROUPS.flatMap((g) => g.modules).map(moduleHref);
-    for (const to of sidebar) expect(inGroups, to).toContain(to);
+    for (const to of ['/administracija/korisnici', '/zaposleni', '/administracija/uvoz-zaposlenih',
+      '/administracija/dodatne-isplate']) {
+      expect(inGroups, to).toContain(to);
+    }
   });
 });
 

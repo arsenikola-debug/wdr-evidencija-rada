@@ -20,10 +20,15 @@ describe('navigacija', () => {
     expect(all.some((i) => i.to === '/finansije/stopovi-kurira')).toBe(false);
   });
 
-  it('Uvoz zaposlenih, Zaposleni i Tarife su u Administraciji, ne u Analitici', () => {
-    expect(groupOf('/administracija/uvoz-zaposlenih')).toBe('Administracija');
-    expect(groupOf('/zaposleni')).toBe('Administracija');
-    expect(groupOf('/administracija/dodatne-isplate')).toBe('Administracija');
+  it('Uvoz zaposlenih, Zaposleni i Tarife su u Administraciji (landing), ne u Analitici', () => {
+    // Od a5ebd12+: u meniju je samo „Administracija"; moduli su na landing stranici
+    // i stavka „Administracija" je aktivna dok je korisnik na njima.
+    const adminItem = all.find((i) => i.to === '/administracija')!;
+    expect(adminItem.group).toBe('Administracija');
+    for (const to of ['/administracija/uvoz-zaposlenih', '/zaposleni', '/administracija/dodatne-isplate']) {
+      expect(groupOf(to), to).toBeUndefined();
+      expect(adminItem.alsoActiveOn, to).toContain(to);
+    }
     const analytics = NAV_GROUPS.find((g) => g.title === 'Analitika')!.items.map((i) => i.to);
     expect(analytics).not.toContain('/administracija/uvoz-zaposlenih');
   });

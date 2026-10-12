@@ -483,9 +483,14 @@ describe('bezbednosne granice u izvoru (frontend)', () => {
     const app = read('App.tsx');
     expect(app).toMatch(/path="\/administracija\/korisnici" element=\{<RequireAuth permission="users\.manage"><AdminUsers \/>/);
     expect(app).toMatch(/path="\/postavi-lozinku" element=\{<RequireAuth><SetPassword \/><\/RequireAuth>\}/);
-    const item = NAV_GROUPS.flatMap((g) => g.items.map((i) => ({ ...i, group: g.title })))
-      .find((i) => i.to === '/administracija/korisnici');
-    expect(item).toMatchObject({ group: 'Administracija', permission: 'users.manage', profiles: ['admin'] });
+    // Od a5ebd12+ u meniju je samo „Administracija"; Korisnici se otvaraju sa landinga
+    // (users.manage, isto kao ruta), a stavka „Administracija" je tada aktivna.
+    const items = NAV_GROUPS.flatMap((g) => g.items.map((i) => ({ ...i, group: g.title })));
+    expect(items.find((i) => i.to === '/administracija/korisnici')).toBeUndefined();
+    const admin = items.find((i) => i.to === '/administracija')!;
+    expect(admin).toMatchObject({ group: 'Administracija', profiles: ['admin'] });
+    expect(admin.anyPermission).toContain('users.manage');
+    expect(admin.alsoActiveOn).toContain('/administracija/korisnici');
   });
 
   it('stari tok „Auth User ID" je uklonjen iz Administracije', () => {

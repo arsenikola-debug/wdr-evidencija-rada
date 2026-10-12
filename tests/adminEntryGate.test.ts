@@ -124,9 +124,10 @@ describe('bočni meni: stavka „Administracija" po istom pravilu', () => {
     expect(navItemVisible(item, admin, canOnly('centers.manage'))).toBe(true);
     expect(navItemVisible(item, admin, canOnly('finance.approve'))).toBe(false);
     expect(navItemVisible(item, operator, canOnly('employee.view'))).toBe(false); // profil i dalje važi
-    const korisnici = NAV_GROUPS.flatMap((g) => g.items).find((i) => i.to === '/administracija/korisnici')!;
-    expect(navItemVisible(korisnici, admin, canOnly('centers.manage'))).toBe(false);
-    expect(navItemVisible(korisnici, admin, canOnly('users.manage'))).toBe(true);
+    // Korisnici više nisu u meniju; sa landinga ih vidi samo users.manage (kao i ruta).
+    expect(NAV_GROUPS.flatMap((g) => g.items).some((i) => i.to === '/administracija/korisnici')).toBe(false);
+    expect(visibleAdminGroups(canOnly('centers.manage')).flatMap((g) => g.modules).some((m) => m.key === 'korisnici')).toBe(false);
+    expect(visibleAdminGroups(canOnly('users.manage')).flatMap((g) => g.modules).map((m) => m.key)).toEqual(['korisnici']);
   });
 
   it('Layout koristi isto pravilo (navItemVisible)', () => {

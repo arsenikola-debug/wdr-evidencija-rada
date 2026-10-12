@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../lib/auth/AuthProvider';
 import { resolveProfile } from '../features/auth/profile';
-import { NAV_GROUPS, navItemVisible, type IconName } from './navConfig';
+import { NAV_GROUPS, navItemVisible, pageTitle, type IconName } from './navConfig';
 import { pendingAdditionalCount, type StopsQueueItem } from '../features/finance/additionalInbox';
 
 /**
@@ -122,13 +122,7 @@ export function Layout() {
   );
 
   // Naslov u top baru se izvodi iz iste navigacione mape — bez nove rute.
-  const current = useMemo(() => {
-    const all = NAV_GROUPS.flatMap((g) => g.items);
-    const match = all
-      .filter((i) => (i.to === '/' ? pathname === '/' : pathname.startsWith(i.to)))
-      .sort((a, b) => b.to.length - a.to.length)[0];
-    return match?.label ?? 'WDR';
-  }, [pathname]);
+  const current = useMemo(() => pageTitle(pathname), [pathname]);
 
   const role = session?.roles?.join(' · ') || 'Bez uloge';
 
